@@ -1,3 +1,20 @@
+"""
+Main execution script for natural products analysis.
+
+This script performs the complete analysis pipeline:
+1. Loads molecular data with either Chemformer or SMILES-Transformer embeddings
+2. Processes each reference taxonomic chain
+3. Computes chemical and taxonomic distances
+4. Generates visualizations and statistical analyses
+5. Saves results to specified directories
+
+The script can be run from command line with arguments:
+    --data_folder: Directory containing input data
+    --encoding: Type of molecular encoding ('chemformer' or 'smitrans')
+    --upper_limit_ref_size: Maximum number of molecules for reference species
+    --lower_limit_ref_size: Minimum number of molecules for reference species
+"""
+
 # run this when you change utils.py to reload functions from utils.py
 import importlib
 import utils
@@ -48,11 +65,9 @@ if __name__ == '__main__':
         nmol_lower_cutoff = args.lower_limit_ref_size
         nmol_upper_cutoff = args.upper_limit_ref_size
         taxonomic_chains_ref = df_taxonomic_chain_ref[
-                (
-                        df_taxonomic_chain_ref['nmol'] < nmol_upper_cutoff
-                ) & (
-                        df_taxonomic_chain_ref['nmol'] >= nmol_lower_cutoff
-                )]['taxonomic_chain'].values
+                (df_taxonomic_chain_ref['nmol'] < nmol_upper_cutoff) & 
+                (df_taxonomic_chain_ref['nmol'] >= nmol_lower_cutoff)
+        ]['taxonomic_chain'].values
 
         for taxonomic_chain_ref in taxonomic_chains_ref:
                 print(f"Starting with taxonomic chain: {taxonomic_chain_ref}")

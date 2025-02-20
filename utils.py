@@ -11,7 +11,15 @@ import json
 
 
 def convert_to_array(x):
-    # Use ast.literal_eval to convert the string representation of a list into a Python list
+    """
+    Convert a string representation of a list/array into a numpy array.
+    
+    Args:
+        x (str): String representation of a list or array
+        
+    Returns:
+        numpy.ndarray or None: Converted array if successful, None if conversion fails
+    """
     try:
         return np.array(ast.literal_eval(x), dtype=float)
     except (ValueError, SyntaxError):
@@ -25,7 +33,19 @@ def load_data(
         top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows
         compute_ECFP_fingerprints=False,
 ):
-
+    """
+    Load and preprocess molecular data from a CSV file.
+    
+    Args:
+        file_path (str): Path to the input CSV file
+        colname_w_smiles (str): Column name containing SMILES strings
+        colname_w_features (str, optional): Column name containing pre-computed molecular features
+        top_rows (int, optional): Number of rows to load (None for all)
+        compute_ECFP_fingerprints (bool): Whether to compute Morgan fingerprints
+        
+    Returns:
+        pandas.DataFrame: Processed dataframe containing molecular data and taxonomic information
+    """
     taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']
     cols_to_load = [colname_w_smiles] + taxonomic_levels
     if colname_w_features:
@@ -70,6 +90,24 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
                       save_data_for_percentiles_to_folder=None,
                       encoding='ECFP6_2048',
                       ):
+    """
+    Calculate chemical distances between molecules from two taxonomic groups.
+    
+    Args:
+        df (pandas.DataFrame): Input dataframe with molecular data
+        taxonomic_chain (str): Target taxonomic chain
+        taxonomic_chain_ref (str): Reference taxonomic chain
+        size_threshold (int): Minimum number of molecules required
+        encoding_columns (str): Column containing molecular encodings
+        distance_metric (str): Type of distance metric ('Tanimoto', 'Cosine', or 'Euclidean')
+        smiles_colname (str): Column name containing SMILES strings
+        save_data_for_percentiles_to_folder (str, optional): Directory to save percentile data
+        encoding (str): Type of molecular encoding used
+        
+    Returns:
+        tuple: (25th percentile distance, reference SMILES, current SMILES, 
+               50th percentile distance, reference SMILES, current SMILES)
+    """
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
     if len(set_current) < size_threshold:
@@ -134,7 +172,23 @@ def chemical_distances_vs_taxonomic_distances(
         save_data_for_percentiles_to_folder=None,
         encoding='ECFP6_2048',
 ):
-
+    """
+    Analyze relationship between chemical and taxonomic distances.
+    
+    Args:
+        df (pandas.DataFrame): Input dataframe with molecular data
+        ref_chain (list): Reference taxonomic chain
+        max_taxonomic_distance (int): Maximum taxonomic distance to consider
+        size_threshold (int): Minimum number of molecules required
+        encoding_columns (str): Column containing molecular encodings
+        distance_metric (str): Type of distance metric
+        taxonomic_levels (list): List of taxonomic level names
+        save_data_for_percentiles_to_folder (str, optional): Directory to save percentile data
+        encoding (str): Type of molecular encoding used
+        
+    Returns:
+        pandas.DataFrame: DataFrame containing chemical distances for different taxonomic distances
+    """
     taxonomic_chain_ref = '-'.join(ref_chain[0:7])
     chemical_distances_vs_taxonomic_distances = []
     for taxonomic_distance in range(max_taxonomic_distance + 1):
@@ -171,7 +225,18 @@ def stats_chemical_distances_vs_taxonomic_distances(
         max_taxonomic_distance=2,
         verbose=True,
 ):
-
+    """
+    Calculate statistical measures for chemical distances at different taxonomic distances.
+    
+    Args:
+        df_chemical_distances_vs_taxonomic_distances (pandas.DataFrame): Input distance data
+        taxonomic_chain_ref (str): Reference taxonomic chain
+        max_taxonomic_distance (int): Maximum taxonomic distance to consider
+        verbose (bool): Whether to print detailed statistics
+        
+    Returns:
+        pandas.DataFrame: Statistical summary of chemical distances
+    """
     df_stats_chemical_distances_vs_taxonomic_distances = pd.DataFrame()
 
     if verbose:
@@ -198,6 +263,14 @@ def stats_chemical_distances_vs_taxonomic_distances(
 
 
 def visualize_chemical_distances_vs_taxonomic_distances(dfc, df_stats_chemical_distances_vs_taxonomic_distances, save_png=None):
+    """
+    Create visualization plots for chemical distances vs taxonomic distances.
+    
+    Args:
+        dfc (pandas.DataFrame): Chemical distance data
+        df_stats_chemical_distances_vs_taxonomic_distances (pandas.DataFrame): Statistical summary data
+        save_png (str, optional): Path to save the generated plots
+    """
     plt.figure(figsize=(10, 5))
     plt.scatter(dfc['taxonomic_distance'], dfc['distance_percentile_50'], marker='_', color='r')
     plt.errorbar(df_stats_chemical_distances_vs_taxonomic_distances['taxonomic_distance'],
@@ -244,7 +317,29 @@ def run_all(
         save_data_for_percentiles_to_folder=None,
         enforce_low_level_recomputations=False,
 ):
+    """
+    Run the complete analysis pipeline.
+    
+    Args:
+        df (pandas.DataFrame): Input dataframe with molecular data
+        ref_chain (list): Reference taxonomic chain
+        max_taxonomic_distance (int): Maximum taxonomic distance to analyze
+        size_threshold (int): Minimum molecules for analysis
+        min_size_threshold (int): Absolute minimum molecules required
+        encoding (str): Type of molecular encoding
+        encoding_columns (str): Column containing molecular encodings
+        distance_metric (str): Type of distance metric
+        verbose (bool): Whether to print detailed output
+        tdistance1 (int): First taxonomic distance for statistical comparison
+        tdistance2 (int): Second taxonomic distance for statistical comparison
+        visualize (bool): Whether to generate visualizations
+        save_dataframes_to_folder (str, optional): Directory to save results
+        save_data_for_percentiles_to_folder (str, optional): Directory to save percentile data
+        enforce_low_level_recomputations (bool): Whether to force recomputation of existing results
         
+    Returns:
+        pandas.DataFrame: Welch's t-test statistics
+    """
     if size_threshold < min_size_threshold:
         raise ValueError(f"size_threshold {size_threshold} can't be less than min_size_threshold {min_size_threshold}")
     taxonomic_chain_ref = '-'.join(ref_chain[0:7])
@@ -332,17 +427,25 @@ def run_all(
 
 
 def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
-        mol_ref = Chem.MolFromSmiles(smi_ref)
-        mol_curr = Chem.MolFromSmiles(smi_curr)    
-        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        axes[0].imshow(Draw.MolToImage(mol_curr))
-        axes[0].set_title("Current")
-        axes[0].axis('off')
-        axes[1].imshow(Draw.MolToImage(mol_ref))
-        axes[1].set_title("Reference")
-        axes[1].axis('off')
-        if save_typical_molecules_png:
-                os.makedirs(os.path.dirname(save_typical_molecules_png), exist_ok=True)
-                plt.savefig(save_typical_molecules_png)
-        else:
-                plt.show()
+    """
+    Draw a pair of molecules side by side for comparison.
+    
+    Args:
+        smi_curr (str): SMILES string of current molecule
+        smi_ref (str): SMILES string of reference molecule
+        save_typical_molecules_png (str, optional): Path to save the generated image
+    """
+    mol_ref = Chem.MolFromSmiles(smi_ref)
+    mol_curr = Chem.MolFromSmiles(smi_curr)    
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    axes[0].imshow(Draw.MolToImage(mol_curr))
+    axes[0].set_title("Current")
+    axes[0].axis('off')
+    axes[1].imshow(Draw.MolToImage(mol_ref))
+    axes[1].set_title("Reference")
+    axes[1].axis('off')
+    if save_typical_molecules_png:
+        os.makedirs(os.path.dirname(save_typical_molecules_png), exist_ok=True)
+        plt.savefig(save_typical_molecules_png)
+    else:
+        plt.show()

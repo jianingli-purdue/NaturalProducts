@@ -10,6 +10,21 @@ import json
 
 
 def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0):
+    """
+    Plot kernel density estimation of p-value distributions.
+    
+    Args:
+        ax: matplotlib axis object
+        data (array-like): Data points for KDE
+        color: Color for the plot
+        label (str): Label for the legend
+        p_value_legend (float): P-value threshold for legend annotation
+        range_min (float): Minimum x-axis value
+        range_max (float): Maximum x-axis value
+        
+    Returns:
+        str: Legend label with percentage below threshold
+    """
     x_values = np.linspace(range_min, range_max, 1000)
     kde_values = gaussian_kde(data).evaluate(x_values)
     ax.plot(x_values, kde_values, color=color, linewidth=2)
@@ -17,6 +32,16 @@ def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0)
     return f'{label} ({percentage_below_threshold:.1f}% p-value < {p_value_legend})'
 
 def visualize_p_value(df, variable, filter_criteria, p_value_legend=0.01, save_png=None):
+    """
+    Create visualization of p-value distributions for different parameters.
+    
+    Args:
+        df (pandas.DataFrame): Input data containing p-values
+        variable (str): Variable to analyze ('percentile', 'embedding', or 'size')
+        filter_criteria (dict): Criteria for filtering the data
+        p_value_legend (float): P-value threshold for annotations
+        save_png (str, optional): Path to save the generated plot
+    """
     keyword = filter_criteria['taxonomic_chain_ref']
    
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -49,6 +74,32 @@ def visualize_p_value(df, variable, filter_criteria, p_value_legend=0.01, save_p
 
 
 if __name__ == '__main__':
+    """
+    Main execution flow for p-value histogram analysis.
+    
+    This script performs the following operations:
+    1. Loads and processes data from CSV files
+    2. Combines data from multiple sources if needed
+    3. Calculates p-values and their logarithms
+    4. Generates visualizations for different taxonomic groups
+    5. Performs statistical analysis including Welch's t-test
+    6. Saves results to files
+
+    Command-line Arguments:
+        --data_folder (str): Path to data directory (default: './data/')
+        --data_filename (str): Name of the data file (default: 'combined_data_Welch_stat.csv')
+        --upper_limit_ref_size (int): Maximum reference species size (default: 1000)
+        --lower_limit_ref_size (int): Minimum reference species size (default: 180)
+        --encoding (str): ML Encoding type (default: 'chemformer')
+        --size_threshold (int): Minimum molecules per species (default: 20)
+        --min_size_threshold (int): Absolute minimum molecules required (default: 20)
+
+    Output:
+        - Combined data CSV files
+        - P-value distribution plots
+        - Statistical analysis results
+        - Lists of unique taxonomic chains
+    """
     parser = argparse.ArgumentParser(description='Visualize p-value distributions.')
     parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
     parser.add_argument('--data_filename', type=str, default='combined_data_Welch_stat.csv', help='Name of the data file.')
@@ -172,4 +223,3 @@ if __name__ == '__main__':
             df_Welch_stat['tdistances'] = f'{tdistance1}vs{tdistance2}'
             df_Welch_stat_combined = pd.concat([df_Welch_stat_combined, df_Welch_stat]) if df_Welch_stat_combined is not None else df_Welch_stat
     df_Welch_stat_combined.to_csv(f'{data_folder}/combined_Welch_stat_{encoding}_s{size_threshold}.csv', index=False)
-    
