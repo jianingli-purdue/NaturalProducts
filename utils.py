@@ -89,6 +89,7 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
                       smiles_colname='canonicalized_smiles',
                       save_data_for_percentiles_to_folder=None,
                       encoding='ECFP6_2048',
+                      percentiles=[25, 50],
                       ):
     """
     Calculate chemical distances between molecules from two taxonomic groups.
@@ -111,54 +112,68 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
     if len(set_current) < size_threshold:
-        return None, None, None, None, None, None
+        return [None] * (3 * len(percentiles))
+    
+    # try to read distances and smiles from a csv file if it exists
+    taxonomic_chain_ref_short = '-'.join(taxonomic_chain_ref.split('-')[-3:])
+    taxonomic_chain_short = '-'.join(taxonomic_chain.split('-')[-3:])
+    data_read_from_existing_file = False
+    if save_data_for_percentiles_to_folder:
+        filename_csv = f'{save_data_for_percentiles_to_folder}/data_for_percentiles_{taxonomic_chain_ref_short}_{taxonomic_chain_short}_{encoding}.csv'
+        if os.path.exists(filename_csv):
+            distances_df = pd.read_csv(filename_csv)
+            if len(distances_df) > 0:
+                data_read_from_existing_file = True
+    
+    if not data_read_from_existing_file:
+        # Extract relevant embeddings
+        vecs_current = df[df['taxonomic_chain'] == taxonomic_chain][encoding_columns]
+        smiles_current = df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname]
+        vecs_reference = df[df['taxonomic_chain'] == taxonomic_chain_ref][encoding_columns]
+        smiles_reference = df[df['taxonomic_chain'] == taxonomic_chain_ref][smiles_colname]
 
-    # Extract relevant embeddings
-    vecs_current = df[df['taxonomic_chain'] == taxonomic_chain][encoding_columns]
-    smiles_current = df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname]
-    vecs_reference = df[df['taxonomic_chain'] == taxonomic_chain_ref][encoding_columns]
-    smiles_reference = df[df['taxonomic_chain'] == taxonomic_chain_ref][smiles_colname]
+        # Loop over the current set molecules and find the closest molecule in the reference set for each
+        distances_df = None
+        for vec_current, smi_current in zip(vecs_current, smiles_current):
+            closest_distance = float('Inf')
+            closest_smi_ref = None
 
-    # Create a list to store distances between the current molecule and the reference set
-    distances_df = pd.DataFrame(columns=['smi_current', 'smi_ref', 'distance'], dtype=object)
+            for vec_reference, smi_reference in zip(vecs_reference, smiles_reference):
+                if distance_metric == 'Tanimoto':
+                    dot_product = np.dot(vec_current, vec_reference)
+                    distance = 1. - dot_product / (np.sum(vec_current) + np.sum(vec_reference) - dot_product)
+                elif distance_metric == 'Cosine':
+                    distance = 1. - np.dot(vec_current, vec_reference) / (np.linalg.norm(vec_current) * np.linalg.norm(vec_reference))
+                elif distance_metric == 'Euclidean':
+                    distance = math.dist(vec_current, vec_reference)
+                else:
+                    print(f"Error: distance_metric {distance_metric} is not implemented yet")
+                    return [None] * (3 * len(percentiles))
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_smi_ref = smi_reference
 
-    # Loop over the current set molecules and find the closest molecule in the reference set for each
-    for vec_current, smi_current in zip(vecs_current, smiles_current):
-        closest_distance = float('Inf')
-        closest_smi_ref = None
-
-        for vec_reference, smi_reference in zip(vecs_reference, smiles_reference):
-            if distance_metric == 'Tanimoto':
-                dot_product = np.dot(vec_current, vec_reference)
-                distance = 1. - dot_product / (np.sum(vec_current) + np.sum(vec_reference) - dot_product)
-            elif distance_metric == 'Cosine':
-                distance = 1. - np.dot(vec_current, vec_reference) / (np.linalg.norm(vec_current) * np.linalg.norm(vec_reference))
-            elif distance_metric == 'Euclidean':
-                distance = math.dist(vec_current, vec_reference)
-            else:
-                print(f"Error: distance_metric {distance_metric} is not implemented yet")
-                return None, None, None, None, None, None
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_smi_ref = smi_reference
-
-        distances_df = pd.concat([distances_df, 
-                                  pd.DataFrame([{'smi_current': smi_current, 'smi_ref': closest_smi_ref, 'distance': closest_distance}])
-                                  ], ignore_index=True)
-
+            current_df = pd.DataFrame([{'smi_current': smi_current, 'smi_ref': closest_smi_ref, 'distance': closest_distance}])
+            distances_df = pd.concat([distances_df, current_df], ignore_index=True) if distances_df is not None else current_df
+    
+        distances_df = distances_df.sort_values(by='distance').reset_index(drop=True)
+        # save the data to a csv file
+        if save_data_for_percentiles_to_folder:
+            os.makedirs(save_data_for_percentiles_to_folder, exist_ok=True)
+            taxonomic_chain_ref_short = '-'.join(taxonomic_chain_ref.split('-')[-3:])
+            taxonomic_chain_short = '-'.join(taxonomic_chain.split('-')[-3:])
+            distances_df.to_csv(f'{save_data_for_percentiles_to_folder}/data_for_percentiles_{taxonomic_chain_ref_short}_{taxonomic_chain_short}_{encoding}.csv', index=False)
+    
     # Extract the percentile distances and the corresponding SMILES
     distances_df = distances_df.sort_values(by='distance').reset_index(drop=True)
-    if save_data_for_percentiles_to_folder:
-        os.makedirs(save_data_for_percentiles_to_folder, exist_ok=True)
-        taxonomic_chain_ref_short = '-'.join(taxonomic_chain_ref.split('-')[-3:])
-        taxonomic_chain_short = '-'.join(taxonomic_chain.split('-')[-3:])
-        distances_df.to_csv(f'{save_data_for_percentiles_to_folder}/data_for_percentiles_{taxonomic_chain_ref_short}_{taxonomic_chain_short}_{encoding}.csv', index=False)
-    idx_50 = int(len(distances_df) * 0.5)
-    idx_25 = int(len(distances_df) * 0.25)
-    smi_current_50, smi_ref_50, distance_percentile_50 = distances_df.loc[idx_50, ['smi_current', 'smi_ref', 'distance']]
-    smi_current_25, smi_ref_25, distance_percentile_25 = distances_df.loc[idx_25, ['smi_current', 'smi_ref', 'distance']]
+    
+    results = []
+    for percentile in percentiles:
+        idx = int(len(distances_df) * (percentile / 100))
+        smi_current, smi_ref, distance = distances_df.loc[idx, ['smi_current', 'smi_ref', 'distance']]
+        results.extend([distance, smi_ref, smi_current])
 
-    return distance_percentile_25, smi_ref_25, smi_current_25, distance_percentile_50, smi_ref_50, smi_current_50
+    return tuple(results)
 
 
 def chemical_distances_vs_taxonomic_distances(
@@ -171,6 +186,7 @@ def chemical_distances_vs_taxonomic_distances(
         taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species'],
         save_data_for_percentiles_to_folder=None,
         encoding='ECFP6_2048',
+        percentiles=[25, 50],
 ):
     """
     Analyze relationship between chemical and taxonomic distances.
@@ -201,28 +217,32 @@ def chemical_distances_vs_taxonomic_distances(
             df['mask'] = (df[taxonomic_levels[level]] != ref_chain[level]) & df['mask']
         taxonomic_chains = df[df['mask']]['taxonomic_chain'].unique()
 
-        # if len(taxonomic_chains)>0:
         for taxonomic_chain in taxonomic_chains:
-            distance_percentile_25, smi_ref_25, smi_current_25, distance_percentile_50, smi_ref_50, smi_current_50 = chemical_distance(df,
-                                                                                   taxonomic_chain,
-                                                                                   taxonomic_chain_ref,
-                                                                                   size_threshold=size_threshold,
-                                                                                   encoding_columns=encoding_columns,
-                                                                                   distance_metric=distance_metric,
-                                                                                   save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
-                                                                                   encoding=encoding,
-                                                                                   )
-            if distance_percentile_25 is not None:
+            distances_and_smileses = chemical_distance(df,
+                                                       taxonomic_chain,
+                                                       taxonomic_chain_ref,
+                                                       size_threshold=size_threshold,
+                                                       encoding_columns=encoding_columns,
+                                                       distance_metric=distance_metric,
+                                                       save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
+                                                       encoding=encoding,
+                                                       percentiles=percentiles,
+                                                       )
+            if distances_and_smileses[0] is not None:
                 chemical_distances_vs_taxonomic_distances.append(
-                    [taxonomic_chain_ref, taxonomic_chain, taxonomic_distance, distance_percentile_25, smi_ref_25, smi_current_25, distance_percentile_50, smi_ref_50, smi_current_50])
+                    [taxonomic_chain_ref, taxonomic_chain, taxonomic_distance] + list(distances_and_smileses))
 
-    return pd.DataFrame(chemical_distances_vs_taxonomic_distances,
-                     columns=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance', 'distance_percentile_25', 'smi_ref_25', 'smi_current_25', 'distance_percentile_50', 'smi_ref_50', 'smi_current_50'])
+    columns=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance']
+    for percentile in percentiles:
+        columns += [f'distance_percentile_{percentile}', f'smi_ref_{percentile}', f'smi_current_{percentile}']
+        
+    return pd.DataFrame(chemical_distances_vs_taxonomic_distances, columns=columns)
 
 
 def stats_chemical_distances_vs_taxonomic_distances(
         df_chemical_distances_vs_taxonomic_distances, taxonomic_chain_ref,
         max_taxonomic_distance=2,
+        percentiles=[25, 50],
         verbose=True,
 ):
     """
@@ -237,32 +257,38 @@ def stats_chemical_distances_vs_taxonomic_distances(
     Returns:
         pandas.DataFrame: Statistical summary of chemical distances
     """
-    df_stats_chemical_distances_vs_taxonomic_distances = pd.DataFrame()
+    df_stats_chemical_distances_vs_taxonomic_distances = None
 
     if verbose:
-        print("taxonomic_distance: distance_percentile_50_ave (distance_percentile_50_std), distance_percentile_25_ave (distance_percentile_25_std)")
+        print("taxonomic_distance: ", end='')
+        for percentile in percentiles:
+            print(f"distance_percentile_{percentile}_ave (distance_percentile_{percentile}_std), ", end='')
+        print()
+        print(f"{taxonomic_distance}: ", end='')
+        
     for taxonomic_distance in range(max_taxonomic_distance + 1):
         dfc = df_chemical_distances_vs_taxonomic_distances[(
                 df_chemical_distances_vs_taxonomic_distances['taxonomic_chain_ref'] == taxonomic_chain_ref
                                                            ) & (
                 df_chemical_distances_vs_taxonomic_distances['taxonomic_distance'] == taxonomic_distance
         )]
-        distance_percentile_50_ave, distance_percentile_50_std = dfc['distance_percentile_50'].mean(), dfc['distance_percentile_50'].std()
-        distance_percentile_25_ave, distance_percentile_25_std = dfc['distance_percentile_25'].mean(), dfc['distance_percentile_25'].std()
-        df_stats_chemical_distances_vs_taxonomic_distances = pd.concat([
-            df_stats_chemical_distances_vs_taxonomic_distances,
-            pd.DataFrame(
-                [[taxonomic_distance, distance_percentile_50_ave, distance_percentile_50_std, distance_percentile_25_ave, distance_percentile_25_std]],
-                columns=['taxonomic_distance', 'distance_percentile_50_ave', 'distance_percentile_50_std', 'distance_percentile_25_ave', 'distance_percentile_25_std'])
-        ])
+        list_of_ave_and_std, cols = [], ['taxonomic_distance']
+        for percentile in percentiles:
+            dist_ave, dist_std = dfc[f'distance_percentile_{percentile}'].mean(), dfc[f'distance_percentile_{percentile}'].std()
+            list_of_ave_and_std += [dist_ave, dist_std]
+            cols += [f'distance_percentile_{percentile}_ave', f'distance_percentile_{percentile}_std']
+            if verbose:
+                print(f"{dist_ave:.3f} ({dist_std:.3f}), ", end='')
         if verbose:
-            print(
-            f"{taxonomic_distance}: {distance_percentile_50_ave:.3f} ({distance_percentile_50_std:.3f}), {distance_percentile_25_ave:.3f} ({distance_percentile_25_std:.3f})")
+            print()
+            
+        df_current = pd.DataFrame([[taxonomic_distance] + list_of_ave_and_std], columns=cols)
+        df_stats_chemical_distances_vs_taxonomic_distances = pd.concat([df_stats_chemical_distances_vs_taxonomic_distances, df_current]) if df_stats_chemical_distances_vs_taxonomic_distances is not None else df_current
 
     return df_stats_chemical_distances_vs_taxonomic_distances
 
 
-def visualize_chemical_distances_vs_taxonomic_distances(dfc, df_stats_chemical_distances_vs_taxonomic_distances, save_png=None):
+def visualize_chemical_distances_vs_taxonomic_distances(dfc, df_stats_chemical_distances_vs_taxonomic_distances, percentiles=[25, 50], save_png=None):
     """
     Create visualization plots for chemical distances vs taxonomic distances.
     
@@ -271,33 +297,20 @@ def visualize_chemical_distances_vs_taxonomic_distances(dfc, df_stats_chemical_d
         df_stats_chemical_distances_vs_taxonomic_distances (pandas.DataFrame): Statistical summary data
         save_png (str, optional): Path to save the generated plots
     """
-    plt.figure(figsize=(10, 5))
-    plt.scatter(dfc['taxonomic_distance'], dfc['distance_percentile_50'], marker='_', color='r')
-    plt.errorbar(df_stats_chemical_distances_vs_taxonomic_distances['taxonomic_distance'],
-                 df_stats_chemical_distances_vs_taxonomic_distances['distance_percentile_50_ave'],
-                 yerr=df_stats_chemical_distances_vs_taxonomic_distances['distance_percentile_50_std'],
-                 color='k', capsize=5, marker='o', ms=10,
-                 )
-    plt.xlabel('Taxonomic distance')
-    plt.xlim(0, 4.5)
-    # plt.ylim(0, 1)
-    plt.xticks([0, 1, 2, 3, 4])
-    plt.ylabel('distance_percentile_50')
-    plt.savefig(save_png.replace('.png', '_percentile50.png')) if save_png else plt.show()
-
-    plt.figure(figsize=(10, 5))
-    plt.scatter(dfc['taxonomic_distance'], dfc['distance_percentile_25'], marker='_', color='b')
-    plt.errorbar(df_stats_chemical_distances_vs_taxonomic_distances['taxonomic_distance'],
-                 df_stats_chemical_distances_vs_taxonomic_distances['distance_percentile_25_ave'],
-                 yerr=df_stats_chemical_distances_vs_taxonomic_distances['distance_percentile_25_std'],
-                 color='k', capsize=5, marker='o', ms=10,
-                 )
-    plt.xlabel('Taxonomic distance')
-    plt.xlim(0, 4.5)
-    # plt.ylim(0, 1)
-    plt.xticks([0, 1, 2, 3, 4])
-    plt.ylabel('distance_percentile_25')
-    plt.savefig(save_png.replace('.png', '_percentile25.png')) if save_png else plt.show()
+    for percentile in percentiles:
+        plt.figure(figsize=(10, 5))
+        plt.scatter(dfc['taxonomic_distance'], dfc[f'distance_percentile_{percentile}'], marker='_', color='r')
+        plt.errorbar(df_stats_chemical_distances_vs_taxonomic_distances['taxonomic_distance'],
+                     df_stats_chemical_distances_vs_taxonomic_distances[f'distance_percentile_{percentile}_ave'],
+                     yerr=df_stats_chemical_distances_vs_taxonomic_distances[f'distance_percentile_{percentile}_std'],
+                     color='k', capsize=5, marker='o', ms=10,
+                     )
+        plt.xlabel('Taxonomic distance')
+        plt.xlim(0, 4.5)
+        # plt.ylim(0, 1)
+        plt.xticks([0, 1, 2, 3, 4])
+        plt.ylabel(f'distance_percentile_{percentile}')
+        plt.savefig(save_png.replace('.png', f'_percentile{percentile}.png')) if save_png else plt.show()
 
 
 def run_all(
@@ -306,6 +319,7 @@ def run_all(
         max_taxonomic_distance=2,   # 2 for debugging, 3 for production runs
         size_threshold=20,
         min_size_threshold=10,
+        percentiles=[25, 50],
         encoding='ECFP6_2048',
         encoding_columns='ECFP6_2048',
         distance_metric='Tanimoto',
@@ -348,9 +362,16 @@ def run_all(
     curr_folder = f'{save_dataframes_to_folder}/chem_vs_tax_dist_csv_files_{encoding}_ms{min_size_threshold}'
     os.makedirs(curr_folder, exist_ok=True)
     curr_csv_file = f'{curr_folder}/chem_vs_tax_dist_{taxonomic_chain_ref}.csv'
+    read_from_existing_file = False
     if not enforce_low_level_recomputations and save_dataframes_to_folder and os.path.exists(curr_csv_file):
         df_chemical_distances_vs_taxonomic_distances = pd.read_csv(curr_csv_file)
-    else:
+        read_from_existing_file = True
+        for percentile in percentiles:
+            if f'distance_percentile_{percentile}' not in df_chemical_distances_vs_taxonomic_distances.columns:
+                read_from_existing_file = False
+                break
+            
+    if not read_from_existing_file:
         df_chemical_distances_vs_taxonomic_distances = chemical_distances_vs_taxonomic_distances(
             df, ref_chain,
             max_taxonomic_distance=max_taxonomic_distance,  # 2 for debugging, 3 for production runs
@@ -359,6 +380,7 @@ def run_all(
             distance_metric=distance_metric,
             save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
             encoding=encoding,
+            percentiles=percentiles,
         )
         if save_dataframes_to_folder:
             df_chemical_distances_vs_taxonomic_distances.to_csv(curr_csv_file, index=False)
@@ -389,7 +411,7 @@ def run_all(
         max_taxonomic_distance=max_taxonomic_distance,
         verbose=verbose
     )
-    df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=['distance_percentile_50_ave'])
+    df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
     if save_dataframes_to_folder:
         curr_folder = f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
         os.makedirs(curr_folder, exist_ok=True)
@@ -399,7 +421,7 @@ def run_all(
     data_Wstat = [taxonomic_chain_ref]
     columns_Wstat = ['taxonomic_chain_ref']
 
-    for percentile in ['25', '50']:
+    for percentile in percentiles:
         sample1 = df_above_threshold[
             df_above_threshold['taxonomic_distance'] == tdistance1
             ][f"distance_percentile_{percentile}"]

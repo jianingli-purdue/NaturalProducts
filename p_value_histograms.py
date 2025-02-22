@@ -31,7 +31,7 @@ def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0)
     percentage_below_threshold = (data < np.log10(p_value_legend)).mean() * 100
     return f'{label} ({percentage_below_threshold:.1f}% p-value < {p_value_legend})'
 
-def visualize_p_value(df, variable, filter_criteria, p_value_legend=0.01, save_png=None):
+def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_value_legend=0.01, save_png=None):
     """
     Create visualization of p-value distributions for different parameters.
     
@@ -47,7 +47,7 @@ def visualize_p_value(df, variable, filter_criteria, p_value_legend=0.01, save_p
     fig, ax = plt.subplots(figsize=(10, 5))
     plt.rc('font', family='DejaVu Sans', size=14, weight='bold')
 
-    values_of_variable = [25, 50] if variable == 'percentile' else df[variable].unique()
+    values_of_variable = percentiles if variable == 'percentile' else df[variable].unique()
     colors = plt.get_cmap('jet', len(values_of_variable))
     legend_labels = []
     
@@ -116,6 +116,10 @@ if __name__ == '__main__':
     size_threshold = args.size_threshold
     min_size_threshold = args.min_size_threshold
     
+    percentiles = [25, 50] # Percentiles need to be specified in args
+    percentile_best = 50
+    Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
+    
     df_stat_refspecies = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
     included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < args.upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= args.lower_limit_ref_size)]['taxonomic_chain'].values
     
@@ -129,7 +133,7 @@ if __name__ == '__main__':
                 for file_name in os.listdir(curr_folder_path):
                     if file_name.startswith("Welch_stat_chem_vs_tax_dist_") and file_name.endswith(".csv"):
                         file_path = os.path.join(curr_folder_path, file_name)
-                        dfc = pd.read_csv(file_path).dropna(subset=['Wt_pvalue_25', 'Wt_pvalue_50'])
+                        dfc = pd.read_csv(file_path).dropna(subset=Wt_column_names)
                         dfc['embedding'] = e
                         dfc['size'] = s
                         if len(dfc) > 0:
@@ -138,9 +142,9 @@ if __name__ == '__main__':
         combined_df.to_csv(f'{data_folder}/{data_filename}', index=False)
 
     combined_df = pd.read_csv(f'{data_folder}/{data_filename}')
-    combined_df = combined_df.dropna(subset=['Wt_pvalue_25', 'Wt_pvalue_50'])
+    combined_df = combined_df.dropna(subset=Wt_column_names)
     combined_df = combined_df[combined_df['taxonomic_chain_ref'].isin(included_refspecies)].copy()
-    for p in [25, 50]:
+    for p in percentiles:
         combined_df[f'log_Wt_pvalue_{p}'] = np.log10(combined_df[f'Wt_pvalue_{p}'])
         
     # build plots for distributions of pvalue of individual reference species as a function of various settings
@@ -152,9 +156,9 @@ if __name__ == '__main__':
         '',
         ]:
         for variable, filter_criteria in [
-            ('embedding', {'percentile': 50, 'size': size_threshold, 'taxonomic_chain_ref': keyword}),
+            ('embedding', {'percentile': percentile_best, 'size': size_threshold, 'taxonomic_chain_ref': keyword}),
             ('percentile', {'embedding': encoding, 'size': size_threshold, 'taxonomic_chain_ref': keyword}),
-            ('size', {'embedding': encoding, 'percentile': 50, 'taxonomic_chain_ref': keyword})
+            ('size', {'embedding': encoding, 'percentile': percentile_best, 'taxonomic_chain_ref': keyword})
         ]:
             fixed_parameters = '-'.join(f'{key}_{value}' for key, value in filter_criteria.items()).replace('taxonomic_chain_ref_', '')
             if keyword == '':
@@ -175,8 +179,8 @@ if __name__ == '__main__':
     for file_name in os.listdir(curr_folder_path):
         if file_name.startswith("chem_vs_tax_dist_") and file_name.endswith(".csv"):
             file_path = os.path.join(curr_folder_path, file_name)
-            dfc = pd.read_csv(file_path, usecols=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance', 'distance_percentile_25', 'distance_percentile_50'])
-            dfc = dfc.replace([np.inf, -np.inf], np.nan).dropna(subset=['distance_percentile_25', 'distance_percentile_50'])
+            dfc = pd.read_csv(file_path, usecols=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance'] + [f'distance_percentile_{p}' for p in percentiles])
+            dfc = dfc.replace([np.inf, -np.inf], np.nan).dropna(subset=[f'distance_percentile_{p}' for p in percentiles])
             dfc = dfc[dfc['taxonomic_chain_ref'].isin(included_refspecies)]
             dfc = dfc[dfc['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold].copy()
             if len(dfc) > 0:                
@@ -201,7 +205,7 @@ if __name__ == '__main__':
             data_Wstat = []
             columns_Wstat = []
 
-            for percentile in ['25', '50']:
+            for percentile in percentiles:
                 sample1 = dfc[
                     dfc['taxonomic_distance'] == tdistance1
                     ][f"distance_percentile_{percentile}"]

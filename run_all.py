@@ -80,6 +80,7 @@ if __name__ == '__main__':
                                 size_threshold=20,
                                 min_size_threshold=20,
                                 distance_metric='Euclidean',
+                                percentiles=[25, 50],
                                 verbose=True,
                                 visualize=True,
                                 save_dataframes_to_folder=data_folder,
