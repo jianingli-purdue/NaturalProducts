@@ -37,30 +37,24 @@ if __name__ == '__main__':
 
         data_folder = args.data_folder
         encoding = args.encoding
+        
+        colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
+        encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
+        
+        filename_from_encoding = {
+                'chemformer': 'Lotus_fulldata_latent_matrix_Chemformer.csv',
+                'smitrans': 'Lotus_fulldata_latent_matrix_SMILES-TRANSFORMER.csv',
+                'SELformer': 'Lotus_fulldata_SELformer.csv',
+                'nyan': 'Lotus_fulldata_latent_matrix_nyan.csv',
+                'molvae': 'Lotus.csv',
+        }
 
-        if encoding == 'chemformer':
-                encoding_columns='latent_vector'
-                df= load_data(
-                        file_path=f'{data_folder}/Lotus_fulldata_latent_matrix_Chemformer.csv',
-                        # file_path=f'{data_folder}/magnoliopsida_latent_matrix_Chemformer.csv',
-                        colname_w_smiles='canonical_smiles', # name of the column in the input file, may be not canonicalized smiles
-                        colname_w_features='latent_vector',   # if features (aka embeddings) are already available in the input file, specify the column name here
-                        top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows will be loaded
-                        compute_ECFP_fingerprints=False,
-                )
-        elif encoding == 'smitrans':
-                encoding_columns='letect_vec_SMILES-TRANSFORMER'
-                df= load_data(
-                        file_path=f'{data_folder}/Lotus_latent_vector_SMILESTRA_Magnoliopsida.csv',
-                        colname_w_smiles='canonical_smiles', # name of the column in the input file, may be not canonicalized smiles
-                        colname_w_features='letect_vec_SMILES-TRANSFORMER',   # if features (aka embeddings) are already available in the input file, specify the column name here
-                        top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows will be loaded
-                        compute_ECFP_fingerprints=False,
-                )
+        if encoding in filename_from_encoding:
+                data_file = f'{data_folder}/{filename_from_encoding[encoding]}'
         else:
                 raise ValueError(f"Unknown encoding {encoding}")
-
-
+        
+        df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=None, compute_ECFP_fingerprints=False)
         df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
         print(df[encoding_columns].head())
 
