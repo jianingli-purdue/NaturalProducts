@@ -9,6 +9,11 @@ import ast
 import math
 import json
 
+try:
+    import torch
+except ImportError:
+    print("PyTorch is not available, skipping import and running calculations on CPU.")
+
 
 def convert_to_array(x):
     """
@@ -134,27 +139,43 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
 
         # Loop over the current set molecules and find the closest molecule in the reference set for each
         distances_df = None
-        for vec_current, smi_current in zip(vecs_current, smiles_current):
-            closest_distance = float('Inf')
-            closest_smi_ref = None
+        
+        if 'torch' in globals() and torch.cuda.is_available() and distance_metric == 'Euclidean':
+            print("PyTorch and GPU are available, Euclidean distance is implemented on GPU. Running calculations on GPU.")            
+            vecs_current = torch.tensor(vecs_current.tolist()).cuda()
+            vecs_reference = torch.tensor(vecs_reference.tolist()).cuda()
+            distances = torch.cdist(vecs_current, vecs_reference)
+            closest_indices = torch.argmin(distances, dim=1)
+            closest_distances = distances[torch.arange(distances.size(0)), closest_indices].cpu().numpy()
+            closest_smiles_refs = smiles_reference.iloc[closest_indices.cpu().numpy()].values
+            distances_df = pd.DataFrame({
+                'smi_current': smiles_current,
+                'smi_ref': closest_smiles_refs,
+                'distance': closest_distances
+            })
+                
+        else:       
+            for vec_current, smi_current in zip(vecs_current, smiles_current):
+                closest_distance = float('Inf')
+                closest_smi_ref = None
 
-            for vec_reference, smi_reference in zip(vecs_reference, smiles_reference):
-                if distance_metric == 'Tanimoto':
-                    dot_product = np.dot(vec_current, vec_reference)
-                    distance = 1. - dot_product / (np.sum(vec_current) + np.sum(vec_reference) - dot_product)
-                elif distance_metric == 'Cosine':
-                    distance = 1. - np.dot(vec_current, vec_reference) / (np.linalg.norm(vec_current) * np.linalg.norm(vec_reference))
-                elif distance_metric == 'Euclidean':
-                    distance = math.dist(vec_current, vec_reference)
-                else:
-                    print(f"Error: distance_metric {distance_metric} is not implemented yet")
-                    return [None] * (3 * len(percentiles))
-                if distance < closest_distance:
-                    closest_distance = distance
-                    closest_smi_ref = smi_reference
+                for vec_reference, smi_reference in zip(vecs_reference, smiles_reference):
+                    if distance_metric == 'Tanimoto':
+                        dot_product = np.dot(vec_current, vec_reference)
+                        distance = 1. - dot_product / (np.sum(vec_current) + np.sum(vec_reference) - dot_product)
+                    elif distance_metric == 'Cosine':
+                        distance = 1. - np.dot(vec_current, vec_reference) / (np.linalg.norm(vec_current) * np.linalg.norm(vec_reference))
+                    elif distance_metric == 'Euclidean':
+                        distance = math.dist(vec_current, vec_reference)
+                    else:
+                        print(f"Error: distance_metric {distance_metric} is not implemented yet")
+                        return [None] * (3 * len(percentiles))
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_smi_ref = smi_reference
 
-            current_df = pd.DataFrame([{'smi_current': smi_current, 'smi_ref': closest_smi_ref, 'distance': closest_distance}])
-            distances_df = pd.concat([distances_df, current_df], ignore_index=True) if distances_df is not None else current_df
+                current_df = pd.DataFrame([{'smi_current': smi_current, 'smi_ref': closest_smi_ref, 'distance': closest_distance}])
+                distances_df = pd.concat([distances_df, current_df], ignore_index=True) if distances_df is not None else current_df
     
         distances_df = distances_df.sort_values(by='distance').reset_index(drop=True)
         # save the data to a csv file
