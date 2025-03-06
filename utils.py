@@ -1,13 +1,17 @@
 import os
 import numpy as np
 import pandas as pd
-from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors, Draw
 import matplotlib.pyplot as plt
 from scipy import stats
 import ast
 import math
 import json
+
+try:
+    from rdkit import Chem
+    from rdkit.Chem import rdMolDescriptors, Draw
+except ImportError:
+    print("RDKit is not available, skipping import and using it for SMILES canonicalization etc.")
 
 try:
     import torch
@@ -60,29 +64,33 @@ def load_data(
     df = df.dropna(subset=taxonomic_levels[6]).copy()
     df['taxonomic_chain'] = df[taxonomic_levels].astype(str).agg('-'.join, axis=1)
     unique_taxonomies = df['taxonomic_chain'].unique()
-    smiles_colname = 'canonicalized_smiles'
-    df[smiles_colname] = df[colname_w_smiles].apply(lambda s: Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True))
     print(f"The size of the dataset {len(df)}, {len(unique_taxonomies)} unique species found")
-    print(f"{sum(df[smiles_colname] != df[colname_w_smiles])} molecules had non-canonical SMILES, changing them to canonical.")
+    
+    if 'rdkit' not in globals():
+        print("RDKit is not available, skipping SMILES canonicalization and Morgan fingerprints computation.")
+    else:
+        smiles_colname = 'canonicalized_smiles'
+        df[smiles_colname] = df[colname_w_smiles].apply(lambda s: Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True))        
+        print(f"{sum(df[smiles_colname] != df[colname_w_smiles])} molecules had non-canonical SMILES, changing them to canonical.")
 
-    if compute_ECFP_fingerprints:
-        radius = 3
-        nBits = 2048
-        dict_SMILES_to_fp = dict()
-        for smi in df[smiles_colname].unique():
-            try:
-                mol = Chem.MolFromSmiles(smi)
-                fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(mol, radius, nBits=nBits)
-                dict_SMILES_to_fp[smi] = np.array(fp)
-            except:
-                print(f"WARNING: couldn't compute fingerprints for SMILES {smi}, skipping it")
-                dict_SMILES_to_fp[smi] = np.nan
+        if compute_ECFP_fingerprints:
+            radius = 3
+            nBits = 2048
+            dict_SMILES_to_fp = dict()
+            for smi in df[smiles_colname].unique():
+                try:
+                    mol = Chem.MolFromSmiles(smi)
+                    fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(mol, radius, nBits=nBits)
+                    dict_SMILES_to_fp[smi] = np.array(fp)
+                except:
+                    print(f"WARNING: couldn't compute fingerprints for SMILES {smi}, skipping it")
+                    dict_SMILES_to_fp[smi] = np.nan
 
-        fp_colname = f'ECFP{2 * radius}_{nBits}'
-        df[fp_colname] = df[smiles_colname].apply(lambda smi: dict_SMILES_to_fp[smi])
-        nbefore = len(df)
-        df = df.dropna(subset=fp_colname).copy()
-        print(f"After skipping rows without fingerprints, the dataset size decreases from {nbefore} to {len(df)}")
+            fp_colname = f'ECFP{2 * radius}_{nBits}'
+            df[fp_colname] = df[smiles_colname].apply(lambda smi: dict_SMILES_to_fp[smi])
+            nbefore = len(df)
+            df = df.dropna(subset=fp_colname).copy()
+            print(f"After skipping rows without fingerprints, the dataset size decreases from {nbefore} to {len(df)}")
 
     return df
 
@@ -91,7 +99,7 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
                       size_threshold=20,
                       encoding_columns='ECFP6_2048',
                       distance_metric='Tanimoto',
-                      smiles_colname='canonicalized_smiles',
+                      smiles_colname=None,
                       save_data_for_percentiles_to_folder=None,
                       encoding='ECFP6_2048',
                       percentiles=[25, 50],
@@ -114,6 +122,10 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
         tuple: (25th percentile distance, reference SMILES, current SMILES, 
                50th percentile distance, reference SMILES, current SMILES)
     """
+    # autoselection of the name of the column with smiles, if not provided explicitly, depending on whether rdkit tools for canonicalization are available
+    if smiles_colname is None:
+        smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'smiles'
+    
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
     if len(set_current) < size_threshold:
@@ -478,6 +490,10 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
         smi_ref (str): SMILES string of reference molecule
         save_typical_molecules_png (str, optional): Path to save the generated image
     """
+    if 'rdkit' not in globals():
+        print("RDKit is not available, skipping molecule visualization.")
+        return
+    
     mol_ref = Chem.MolFromSmiles(smi_ref)
     mol_curr = Chem.MolFromSmiles(smi_curr)    
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
