@@ -84,8 +84,10 @@ if __name__ == '__main__':
                                 save_data_for_percentiles_to_folder=f"{data_folder}/data_for_percentiles",
                                 enforce_low_level_recomputations=False,
                         )
-                except:
-                        print(f"Error for {taxonomic_chain_ref}")
+                except Exception as e:
+                        print(f"Error for {taxonomic_chain_ref}:")
+                        print(e)
+                        print()
                         pass
 
 

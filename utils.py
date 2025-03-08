@@ -124,7 +124,7 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
     """
     # autoselection of the name of the column with smiles, if not provided explicitly, depending on whether rdkit tools for canonicalization are available
     if smiles_colname is None:
-        smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'smiles'
+        smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'canonical_smiles'
     
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
@@ -297,7 +297,6 @@ def stats_chemical_distances_vs_taxonomic_distances(
         for percentile in percentiles:
             print(f"distance_percentile_{percentile}_ave (distance_percentile_{percentile}_std), ", end='')
         print()
-        print(f"{taxonomic_distance}: ", end='')
         
     for taxonomic_distance in range(max_taxonomic_distance + 1):
         dfc = df_chemical_distances_vs_taxonomic_distances[(
@@ -306,6 +305,8 @@ def stats_chemical_distances_vs_taxonomic_distances(
                 df_chemical_distances_vs_taxonomic_distances['taxonomic_distance'] == taxonomic_distance
         )]
         list_of_ave_and_std, cols = [], ['taxonomic_distance']
+        if verbose:
+            print(f"{taxonomic_distance}: ", end='')
         for percentile in percentiles:
             dist_ave, dist_std = dfc[f'distance_percentile_{percentile}'].mean(), dfc[f'distance_percentile_{percentile}'].std()
             list_of_ave_and_std += [dist_ave, dist_std]
@@ -420,6 +421,7 @@ def run_all(
             
     # select only those rows where size >= size_threshold
     file_with_n_molecules_per_taxonomic_chain = f'{save_dataframes_to_folder}/n_molecules_per_taxonomic_chain.json'
+    smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'canonical_smiles'
     nsmiles_per_taxonomic_chain = {}
     if os.path.exists(file_with_n_molecules_per_taxonomic_chain):
         with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
@@ -429,7 +431,7 @@ def run_all(
         nsmiles_per_taxonomic_chain = {}
         taxonomic_chains = df['taxonomic_chain'].unique()
         for taxonomic_chain in taxonomic_chains:
-            set_current = set(df[df['taxonomic_chain'] == taxonomic_chain]['canonicalized_smiles'])
+            set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
             nsmiles_per_taxonomic_chain[taxonomic_chain] = len(set_current)
         with open(file_with_n_molecules_per_taxonomic_chain, 'w') as f:
             f.write(json.dumps(nsmiles_per_taxonomic_chain))
