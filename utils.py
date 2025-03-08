@@ -154,8 +154,8 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
         
         if 'torch' in globals() and torch.cuda.is_available() and distance_metric == 'Euclidean':
             print("PyTorch and GPU are available, Euclidean distance is implemented on GPU. Running calculations on GPU.")            
-            vecs_current = torch.tensor(vecs_current.tolist()).cuda()
-            vecs_reference = torch.tensor(vecs_reference.tolist()).cuda()
+            vecs_current = torch.tensor(np.array(vecs_current.tolist())).cuda()
+            vecs_reference = torch.tensor(np.array(vecs_reference.tolist())).cuda()
             distances = torch.cdist(vecs_current, vecs_reference)
             closest_indices = torch.argmin(distances, dim=1)
             closest_distances = distances[torch.arange(distances.size(0)), closest_indices].cpu().numpy()
