@@ -406,6 +406,7 @@ def run_all(
                 break
             
     if not read_from_existing_file:
+        os.makedirs(save_data_for_percentiles_to_folder, exist_ok=True)
         df_chemical_distances_vs_taxonomic_distances = chemical_distances_vs_taxonomic_distances(
             df, ref_chain,
             max_taxonomic_distance=max_taxonomic_distance,  # 2 for debugging, 3 for production runs
