@@ -32,11 +32,13 @@ if __name__ == '__main__':
         parser.add_argument('--lower_limit_ref_size', type=int, default=180, help='Include reference species with number of molecules greater or equal than this value.')
         parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules for a current species.')
         parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules for a current species to be included in slow low-level computations.')
+        parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to compute.')
         parser.add_argument('--visualize_typical_pairs', type=bool, default=False, help='Visualize typical pairs of molecules.')
         args = parser.parse_args()
 
         data_folder = args.data_folder
         encoding = args.encoding
+        percentiles = list(map(int, args.percentiles.split(',')))
         
         colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
         encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
@@ -77,7 +79,7 @@ if __name__ == '__main__':
                                 size_threshold=args.size_threshold,
                                 min_size_threshold=args.min_size_threshold,
                                 distance_metric='Euclidean',
-                                percentiles=[25, 50],
+                                percentiles=percentiles,
                                 verbose=True,
                                 visualize=True,
                                 save_dataframes_to_folder=data_folder,

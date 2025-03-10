@@ -445,7 +445,8 @@ def run_all(
         df_above_threshold,
         taxonomic_chain_ref=taxonomic_chain_ref,
         max_taxonomic_distance=max_taxonomic_distance,
-        verbose=verbose
+        verbose=verbose,
+        percentiles=percentiles,
     )
     df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
     if save_dataframes_to_folder:

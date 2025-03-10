@@ -102,12 +102,13 @@ if __name__ == '__main__':
     """
     parser = argparse.ArgumentParser(description='Visualize p-value distributions.')
     parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
-    parser.add_argument('--data_filename', type=str, default='combined_data_Welch_stat.csv', help='Name of the data file.')
+    parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv will be generated.')
     parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
     parser.add_argument('--lower_limit_ref_size', type=int, default=180, help='Include reference species with number of molecules greater or equal than this value.')
     parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
     parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules in a current species to include it into analysis.')
     parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules in a species for which raw data were precomputed.')
+    parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to use.')
     args = parser.parse_args()
 
     data_folder = args.data_folder
@@ -115,17 +116,17 @@ if __name__ == '__main__':
     encoding = args.encoding
     size_threshold = args.size_threshold
     min_size_threshold = args.min_size_threshold
-    
-    percentiles = [25, 50] # Percentiles need to be specified in args
+    percentiles = list(map(int, args.percentiles.split(',')))
     percentile_best = 50
     Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
     
     df_stat_refspecies = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
     included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < args.upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= args.lower_limit_ref_size)]['taxonomic_chain'].values
     
-    if data_filename is None:
+    if data_filename == '':
         encodings = ['chemformer']
         sizes = [20, 25, 30]
+        sizes = [30]
         combined_df = None
         for e in encodings:
             for s in sizes:
@@ -138,7 +139,8 @@ if __name__ == '__main__':
                         dfc['size'] = s
                         if len(dfc) > 0:
                             combined_df = pd.concat([combined_df, dfc]) if combined_df is not None else dfc
-                            
+        
+        data_filename = 'combined_data_Welch_stat.csv'                    
         combined_df.to_csv(f'{data_folder}/{data_filename}', index=False)
 
     combined_df = pd.read_csv(f'{data_folder}/{data_filename}')

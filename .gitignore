@@ -3,4 +3,5 @@
 .vscode
 __pycache__
 data
+run
 launch.json
