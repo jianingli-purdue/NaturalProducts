@@ -33,6 +33,8 @@ if __name__ == '__main__':
         parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules for a current species.')
         parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules for a current species to be included in slow low-level computations.')
         parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to compute.')
+        parser.add_argument('--tdistance1', type=int, default=1, help='One of the taxonomic distances for statistical comparisons.')
+        parser.add_argument('--tdistance2', type=int, default=3, help='The other taxonomic distance for statistical comparisons.')
         parser.add_argument('--visualize_typical_pairs', type=bool, default=False, help='Visualize typical pairs of molecules.')
         args = parser.parse_args()
 
@@ -80,8 +82,10 @@ if __name__ == '__main__':
                                 min_size_threshold=args.min_size_threshold,
                                 distance_metric='Euclidean',
                                 percentiles=percentiles,
+                                tdistance1=args.tdistance1,
+                                tdistance2=args.tdistance2,
                                 verbose=True,
-                                visualize=True,
+                                calc_stats_chemical_distances_vs_taxonomic_distances=False,
                                 save_dataframes_to_folder=data_folder,
                                 save_data_for_percentiles_to_folder=f"{data_folder}/data_for_percentiles",
                                 enforce_low_level_recomputations=False,

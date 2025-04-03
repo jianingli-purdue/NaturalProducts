@@ -1,0 +1,167 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import gaussian_kde
+from scipy import stats
+import argparse
+from mpmath import mp
+import json
+
+
+def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0):
+    """
+    Plot kernel density estimation of p-value distributions.
+    
+    Args:
+        ax: matplotlib axis object
+        data (array-like): Data points for KDE
+        color: Color for the plot
+        label (str): Label for the legend
+        p_value_legend (float): P-value threshold for legend annotation
+        range_min (float): Minimum x-axis value
+        range_max (float): Maximum x-axis value
+        
+    Returns:
+        str: Legend label with percentage below threshold
+    """
+    x_values = np.linspace(range_min, range_max, 1000)
+    kde_values = gaussian_kde(data).evaluate(x_values)
+    ax.plot(x_values, kde_values, color=color, linewidth=2)
+    percentage_below_threshold = (data < np.log10(p_value_legend)).mean() * 100
+    return f'{label} ({percentage_below_threshold:.1f}% p-value < {p_value_legend})'
+
+def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_value_legend=0.01, save_png=None):
+    """
+    Create visualization of p-value distributions for different parameters.
+    
+    Args:
+        df (pandas.DataFrame): Input data containing p-values
+        variable (str): Variable to analyze ('percentile', 'embedding', or 'size')
+        filter_criteria (dict): Criteria for filtering the data
+        p_value_legend (float): P-value threshold for annotations
+        save_png (str, optional): Path to save the generated plot
+    """
+    keyword = filter_criteria['taxonomic_chain_ref']
+   
+    fig, ax = plt.subplots(figsize=(10, 5))
+    plt.rc('font', family='DejaVu Sans', size=14, weight='bold')
+
+    values_of_variable = percentiles if variable == 'percentile' else df[variable].unique()
+    colors = plt.get_cmap('jet', len(values_of_variable))
+    legend_labels = []
+    
+    for i, val in enumerate(values_of_variable):
+        if variable == 'percentile':
+            subset = df[(df['size'] == filter_criteria['size']) & (df['embedding'] == filter_criteria['embedding'])]
+        elif variable == 'embedding':
+            subset = df[(df['size'] == filter_criteria['size']) & (df['embedding'] == val)]
+        else:
+            subset = df[(df['size'] == val) & (df['embedding'] == filter_criteria['embedding'])]
+        data = subset[f'log_Wt_pvalue_{filter_criteria["percentile"]}'] if variable != 'percentile' else subset[f'log_Wt_pvalue_{val}']
+        label = f'Percentile {val}' if variable == 'percentile' else val if variable == 'embedding' else f'Size {val}'
+        if len(data) > 1:
+            legend_labels.append(plot_kde(ax, data, colors(i), label, p_value_legend))
+    
+    title = f'{keyword}, Different {variable.capitalize()}s' if keyword else f'All Taxonomic Chains, Different {variable.capitalize()}s'
+    plt.title(title, fontsize=16, weight='bold')
+    ax.axvline(x=np.log10(p_value_legend), color='gray', linestyle='-', linewidth=1)
+    plt.xlabel('Log10(p-value)', fontsize=14, weight='bold')
+    plt.ylabel('Frequency', fontsize=14, weight='bold')
+    plt.legend(title=variable.capitalize(), labels=legend_labels)
+    ax.grid(False)
+    plt.savefig(save_png) if save_png else plt.show()
+
+
+if __name__ == '__main__':
+    # generate the table with pvalues for chemical distances concatenated together, regardless of ref species, for different taxonomic distances and selected keywords
+    parser = argparse.ArgumentParser(description='Visualize p-value distributions.')
+    parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
+    parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv will be generated.')
+    parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
+    parser.add_argument('--lower_limit_ref_size', type=int, default=180, help='Include reference species with number of molecules greater or equal than this value.')
+    parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
+    parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules in a current species to include it into analysis.')
+    parser.add_argument('--min_size_threshold', type=int, default=10, help='Minimum number of molecules in a species for which raw data were precomputed.')
+    parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to use.')
+    args = parser.parse_args()
+
+    data_folder = args.data_folder
+    data_filename = args.data_filename
+    encoding = args.encoding
+    size_threshold = args.size_threshold
+    min_size_threshold = args.min_size_threshold
+    percentiles = list(map(int, args.percentiles.split(',')))
+    distance_column_names = [f'distance_percentile_{p}' for p in percentiles]
+    suffix = f"{encoding}_s{size_threshold}_refs{args.lower_limit_ref_size}-{args.upper_limit_ref_size}"
+    
+    df_stat_refspecies = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
+    included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < args.upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= args.lower_limit_ref_size)]['taxonomic_chain'].values
+    
+    file_with_n_molecules_per_taxonomic_chain = f'{data_folder}/n_molecules_per_taxonomic_chain.json'
+    with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
+        nsmiles_per_taxonomic_chain = json.loads(f.read())
+        
+    
+    if data_filename == '':
+        combined_df = None
+        curr_folder_path = f'{data_folder}/chem_vs_tax_dist_csv_files_{encoding}_ms{min_size_threshold}'
+        for file_name in os.listdir(curr_folder_path):
+            if file_name.startswith("chem_vs_tax_dist_") and file_name.endswith(".csv"):
+                file_path = os.path.join(curr_folder_path, file_name)
+                dfc = pd.read_csv(file_path, usecols=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance'] + [f'distance_percentile_{p}' for p in percentiles])
+                dfc = dfc.replace([np.inf, -np.inf], np.nan).dropna(subset=[f'distance_percentile_{p}' for p in percentiles])
+                dfc = dfc[dfc['taxonomic_chain_ref'].isin(included_refspecies)]
+                dfc = dfc[dfc['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold].copy()
+                if len(dfc) > 0:                
+                    combined_df = pd.concat([combined_df, dfc]) if combined_df is not None else dfc
+                
+        with open(f'{data_folder}/unique_taxonomic_chain_refs_{suffix}.txt', 'w') as f:
+            for item in combined_df['taxonomic_chain_ref'].unique():
+                f.write(f"{item}\n")
+        
+        data_filename = f'combined_data_Welch_stat_{suffix}.csv'
+        combined_df.to_csv(f'{data_folder}/{data_filename}', index=False)
+        
+    combined_df = pd.read_csv(f'{data_folder}/{data_filename}')
+    combined_df = combined_df.dropna(subset=distance_column_names)
+    combined_df = combined_df[combined_df['taxonomic_chain_ref'].isin(included_refspecies)].copy()
+    
+
+    df_Welch_stat_combined = None
+    for tdistance1, tdistance2 in [[1, 2], [2, 3], [1, 3],]:
+        for keyword in ['', 'Fungi', 'Viridiplantae', 'Magnoliopsida', 'Pinopsida',
+                        'Bacteria', 
+                        'Metazoa',
+                        ]:
+            dfc = combined_df[combined_df['taxonomic_chain_ref'].str.contains(keyword)]
+            
+            data_Wstat = []
+            columns_Wstat = []
+
+            for percentile in percentiles:
+                sample1 = dfc[
+                    dfc['taxonomic_distance'] == tdistance1
+                    ][f"distance_percentile_{percentile}"]
+                sample2 = dfc[
+                    dfc['taxonomic_distance'] == tdistance2
+                    ][f"distance_percentile_{percentile}"]
+                st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
+                Wtstat, Wtpvalue, Wtdof = st.statistic, st.pvalue, st.df
+                if not np.isnan(Wtdof) and Wtdof >= 2:
+                    t = mp.mpf(Wtstat)
+                    nu = mp.mpf(Wtdof)
+                    x2 = nu / (t**2 + nu)
+                    pvalue_high_acc = mp.betainc(nu/2, mp.one/2, x2=x2, regularized=True)/2
+                else:
+                    print(f"No sufficient sampling for taxonomic_distances {tdistance1},{tdistance2} in {keyword}, Wtdof {Wtdof}")
+                    pvalue_high_acc = None
+                # print(f"p-value: {Wtpvalue} vs {pvalue_high_acc}")
+                data_Wstat += [Wtstat, pvalue_high_acc, Wtdof]
+                columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+
+            df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
+            df_Welch_stat['keyword'] = keyword
+            df_Welch_stat['tdistances'] = f'{tdistance1}vs{tdistance2}'
+            df_Welch_stat_combined = pd.concat([df_Welch_stat_combined, df_Welch_stat]) if df_Welch_stat_combined is not None else df_Welch_stat
+    df_Welch_stat_combined.to_csv(f'{data_folder}/combined_Welch_stat_{suffix}.csv', index=False)

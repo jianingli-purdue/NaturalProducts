@@ -360,7 +360,7 @@ def run_all(
         verbose=True,
         tdistance1=2,
         tdistance2=3,
-        visualize=True,
+        calc_stats_chemical_distances_vs_taxonomic_distances=False,
         save_dataframes_to_folder=None,
         save_data_for_percentiles_to_folder=None,
         enforce_low_level_recomputations=False,
@@ -439,20 +439,6 @@ def run_all(
     df_above_threshold = df_chemical_distances_vs_taxonomic_distances[
         df_chemical_distances_vs_taxonomic_distances['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold
         ].copy()
-    
-    # calculate statistics for chemical distances vs taxonomic distances
-    df_stats_chemical_distances_vs_taxonomic_distances = stats_chemical_distances_vs_taxonomic_distances(
-        df_above_threshold,
-        taxonomic_chain_ref=taxonomic_chain_ref,
-        max_taxonomic_distance=max_taxonomic_distance,
-        verbose=verbose,
-        percentiles=percentiles,
-    )
-    df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
-    if save_dataframes_to_folder:
-        curr_folder = f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
-        os.makedirs(curr_folder, exist_ok=True)
-        df_stats_chemical_distances_vs_taxonomic_distances.to_csv(f'{curr_folder}/stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
 
     # calculate Welch's t-test for difference between taxonomic distances tdistance1 and tdistance2 (by default, 2 and 3)
     data_Wstat = [taxonomic_chain_ref]
@@ -471,16 +457,29 @@ def run_all(
 
     df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
     if save_dataframes_to_folder:
-        curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
+        curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance1}_{encoding}_s{size_threshold}'
         os.makedirs(curr_folder, exist_ok=True)
         df_Welch_stat.to_csv(f'{curr_folder}/Welch_stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
 
-    if visualize and len(df_stats_chemical_distances_vs_taxonomic_distances) > 0:
-        visualize_chemical_distances_vs_taxonomic_distances(
+    # calculate statistics for chemical distances vs taxonomic distances
+    if calc_stats_chemical_distances_vs_taxonomic_distances:
+        df_stats_chemical_distances_vs_taxonomic_distances = stats_chemical_distances_vs_taxonomic_distances(
             df_above_threshold,
-            df_stats_chemical_distances_vs_taxonomic_distances,
-            save_png=f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}/stat_chem_vs_tax_dist_{short_taxonomic_chain_ref}.png'
+            taxonomic_chain_ref=taxonomic_chain_ref,
+            max_taxonomic_distance=max_taxonomic_distance,
+            verbose=verbose,
+            percentiles=percentiles,
         )
+        df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
+        curr_folder = f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
+        os.makedirs(curr_folder, exist_ok=True)
+        df_stats_chemical_distances_vs_taxonomic_distances.to_csv(f'{curr_folder}/stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
+        if len(df_stats_chemical_distances_vs_taxonomic_distances) > 0:
+            visualize_chemical_distances_vs_taxonomic_distances(
+                df_above_threshold,
+                df_stats_chemical_distances_vs_taxonomic_distances,
+                save_png=f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}/stat_chem_vs_tax_dist_{short_taxonomic_chain_ref}.png'
+            )
 
     return df_Welch_stat
 
@@ -494,8 +493,8 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
         smi_ref (str): SMILES string of reference molecule
         save_typical_molecules_png (str, optional): Path to save the generated image
     """
-    if 'rdkit' not in globals():
-        print("RDKit is not available, skipping molecule visualization.")
+    if 'Draw' not in globals():
+        print("RDKit Draw is not available, skipping molecule visualization.")
         return
     
     mol_ref = Chem.MolFromSmiles(smi_ref)
