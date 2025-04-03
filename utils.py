@@ -457,7 +457,7 @@ def run_all(
 
     df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
     if save_dataframes_to_folder:
-        curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance1}_{encoding}_s{size_threshold}'
+        curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance2}_{encoding}_s{size_threshold}'
         os.makedirs(curr_folder, exist_ok=True)
         df_Welch_stat.to_csv(f'{curr_folder}/Welch_stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
 
