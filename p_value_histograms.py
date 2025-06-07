@@ -5,8 +5,9 @@ import numpy as np
 from scipy.stats import gaussian_kde
 import argparse
 
+MIN_ACCEPTED_LOG_VALUE = -20
 
-def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0):
+def plot_kde(ax, data, color, label, p_value_legend, range_min=MIN_ACCEPTED_LOG_VALUE, range_max=0):
     """
     Plot kernel density estimation of p-value distributions.
     
@@ -23,8 +24,11 @@ def plot_kde(ax, data, color, label, p_value_legend, range_min=-40, range_max=0)
         str: Legend label with percentage below threshold
     """
     x_values = np.linspace(range_min, range_max, 1000)
-    kde_values = gaussian_kde(data).evaluate(x_values)
-    ax.plot(x_values, kde_values, color=color, linewidth=2)
+    if np.all(data == data[0]):  # if all elements in data are the same, then gaussian_kde fails
+        ax.axvline(x=data[0], color=color, linewidth=2, label=label)  # Plot a vertical line
+    else:
+        kde_values = gaussian_kde(data).evaluate(x_values)
+        ax.plot(x_values, kde_values, color=color, linewidth=2)
     percentage_below_threshold = (data < np.log10(p_value_legend)).mean() * 100
     return f'{label} ({percentage_below_threshold:.1f}% p-value < {p_value_legend})'
 
@@ -56,6 +60,7 @@ def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_val
         else:
             subset = df[(df['size'] == val) & (df['embedding'] == filter_criteria['embedding'])]
         data = subset[f'log_Wt_pvalue_{filter_criteria["percentile"]}'] if variable != 'percentile' else subset[f'log_Wt_pvalue_{val}']
+        data = [np.maximum(x, MIN_ACCEPTED_LOG_VALUE) for x in data]
         label = f'Percentile {val}' if variable == 'percentile' else val if variable == 'embedding' else f'Size {val}'
         if len(data) > 1:
             legend_labels.append(plot_kde(ax, data, colors(i), label, p_value_legend))
@@ -101,11 +106,11 @@ if __name__ == '__main__':
     parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
     parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv will be generated.')
     parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
-    parser.add_argument('--lower_limit_ref_size', type=int, default=180, help='Include reference species with number of molecules greater or equal than this value.')
+    parser.add_argument('--lower_limit_ref_size', type=int, default=150, help='Include reference species with number of molecules greater or equal than this value.')
     parser.add_argument('--encoding', type=str, default='chemformer', help='The best ML Encoding used for converting SMILES to vectors, center visualization on it.')
     parser.add_argument('--tdistance1', type=int, default=1, help='Taxonomic distance 1 for statistical comparisons.')
     parser.add_argument('--tdistance2', type=int, default=3, help='Taxonomic distance 2 for statistical comparisons.')
-    parser.add_argument('--size_threshold', type=int, default=20, help='The best minimum number of molecules in a current species, center visualization on it.')
+    parser.add_argument('--size_threshold', type=int, default=15, help='The best minimum number of molecules in a current species, center visualization on it.')
     parser.add_argument('--percentile', type=int, default=50, help='The best percentile in the definition of chem distance, center visualization on it.')
     parser.add_argument('--min_size_threshold', type=int, default=10, help='Minimum number of molecules in a species for which raw data were precomputed.')
     parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to use.')
@@ -123,12 +128,12 @@ if __name__ == '__main__':
     Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
        
     if data_filename == '':
-        encodings = ['chemformer', 'smitrans', 'SELformer', 'nyan', 'molvae', ]
+        encodings = ['chemformer', 'smitrans', 'SELformer', 'molvae', 'nyan', ]
         sizes = [10, 15, 20, 25, 30]
         combined_df = None
         for e in encodings:
             for s in sizes:
-                curr_folder_path = f'{data_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance1}_{e}_s{s}'
+                curr_folder_path = f'{data_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance2}_{e}_s{s}'
                 for file_name in os.listdir(curr_folder_path):
                     if file_name.startswith("Welch_stat_chem_vs_tax_dist_") and file_name.endswith(".csv"):
                         file_path = os.path.join(curr_folder_path, file_name)
@@ -157,8 +162,9 @@ if __name__ == '__main__':
     for keyword in [
         'Magnoliopsida',
         'Pinopsida',
-        'Viridiplantae', 
-        'Fungi',
+        'Fungi', 
+        'Metazoa',
+        # 'Bacteria',
         '',
         ]:
         for variable, filter_criteria in [
