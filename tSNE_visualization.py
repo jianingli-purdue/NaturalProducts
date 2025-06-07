@@ -15,7 +15,10 @@ import argparse
 
 encoding='chemformer'
 data_folder = 'C:\\Users\\anton\\Desktop\\c\\JianingLi\\data'
-
+selection = "Eukaryota-Viridiplantae-Streptophyta-Magnoliopsida-Celastraceae-"
+reference_species = "Eukaryota-Viridiplantae-Streptophyta-Magnoliopsida-Celastraceae-Tripterygium-Tripterygium wilfordii"
+reference_smiles = "CC(=O)OC1C2C(OC(=O)c3ccccc3)C(OC(=O)c3ccccc3)C3(C)C(OC(=O)c4ccccc4)C(OC(=O)c4ccccc4)CC(C)C13OC2(C)C"
+reference_smiles = "CC1(C)O[C@]23[C@H](OC(=O)c4cccnc4)[C@H]1C[C@@H](OC(=O)C=Cc1ccccc1)[C@]2(CO)[C@@H](OC(=O)c1ccccc1)CC[C@]3(C)O"
 
 colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
 encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
@@ -33,6 +36,14 @@ if encoding in filename_from_encoding:
 else:
         raise ValueError(f"Unknown encoding {encoding}")
 
-df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=20, compute_ECFP_fingerprints=False)
+df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=1000, compute_ECFP_fingerprints=False)
+df = df[df['taxonomic_chain'].str.startswith(selection)].copy()
 df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
 print(df[encoding_columns].head())
+
+df_reference_smiles = df[df[colname_w_smiles] == reference_smiles]
+if df_reference_smiles.empty:
+    raise ValueError(f"Reference SMILES '{reference_smiles}' not found in the dataset.")
+vec0 = df_reference_smiles['latent_vector'].values[0]
+
+vecs = df['latent_vector'].values
