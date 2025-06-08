@@ -4,6 +4,7 @@ import argparse
 from sklearn.manifold import TSNE
 import numpy as np
 from matplotlib.lines import Line2D
+from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 # if __name__ == '__main__':
@@ -22,7 +23,7 @@ data_folder = 'C:\\Users\\anton\\Desktop\\c\\JianingLi\\data'
 selection = "Eukaryota-Viridiplantae-Streptophyta-Magnoliopsida-Celastraceae-"
 reference_species = "Eukaryota-Viridiplantae-Streptophyta-Magnoliopsida-Celastraceae-Tripterygium-Tripterygium wilfordii"
 reference_smiles = "CC(=O)OC1C2C(OC(=O)c3ccccc3)C(OC(=O)c3ccccc3)C3(C)C(OC(=O)c4ccccc4)C(OC(=O)c4ccccc4)CC(C)C13OC2(C)C"
-reference_smiles = "CC1(C)O[C@]23[C@H](OC(=O)c4cccnc4)[C@H]1C[C@@H](OC(=O)C=Cc1ccccc1)[C@]2(CO)[C@@H](OC(=O)c1ccccc1)CC[C@]3(C)O"
+# reference_smiles = "CC1(C)O[C@]23[C@H](OC(=O)c4cccnc4)[C@H]1C[C@@H](OC(=O)C=Cc1ccccc1)[C@]2(CO)[C@@H](OC(=O)c1ccccc1)CC[C@]3(C)O"
 
 colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
 encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
@@ -40,7 +41,7 @@ if encoding in filename_from_encoding:
 else:
         raise ValueError(f"Unknown encoding {encoding}")
 
-df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=100000, compute_ECFP_fingerprints=False)
+df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=None, compute_ECFP_fingerprints=False)
 df = df[df['taxonomic_chain'].str.startswith(selection)].copy()
 df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
 print(df[encoding_columns].head())
@@ -53,11 +54,12 @@ vec0 = df_reference_smiles['latent_vector'].values[0]
 vecs = df['latent_vector'].values
 X = np.vstack(vecs)
 print(X.shape)
+
+# run tsne analysis
 tsne = TSNE(n_components=2, random_state=42)
 X_embedded = tsne.fit_transform(X)
 vecs_tsne = X_embedded.tolist()
 
-# color dots by taxonomic distance to the reference species
 parts = reference_species.split('-')
 genus_prefix = '-'.join(parts[:-1]) + '-'
 family_prefix = '-'.join(parts[:-2]) + '-'
@@ -126,3 +128,12 @@ plt.xlabel('tSNE-1')
 plt.ylabel('tSNE-2')
 plt.tight_layout()
 plt.show()
+
+# compute importance of PCs
+pca = PCA()
+pca.fit(X)
+explained_variance = pca.explained_variance_ratio_
+cumulative_variance = np.cumsum(explained_variance)
+print("Explained variance ratio per PC:", explained_variance[0:10])
+print("Cumulative explained variance:", cumulative_variance[0:10])
+
