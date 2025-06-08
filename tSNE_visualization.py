@@ -52,6 +52,7 @@ vec0 = df_reference_smiles['latent_vector'].values[0]
 
 vecs = df['latent_vector'].values
 X = np.vstack(vecs)
+print(X.shape)
 tsne = TSNE(n_components=2, random_state=42)
 X_embedded = tsne.fit_transform(X)
 vecs_tsne = X_embedded.tolist()
@@ -72,20 +73,53 @@ for idx, row in df.iterrows():
                 colors.append('red')
         else:
                 colors.append('yellow')
+category_order = [
+        'Other families',
+        'Other genus in family',
+        'Other species in genus',
+        'Reference species, other SMILES',
+        'Reference species & SMILES'
+]
+color_map = {
+        'Reference species & SMILES': 'black',
+        'Reference species, other SMILES': 'black',
+        'Other species in genus': 'green',
+        'Other genus in family': 'red',
+        'Other families': 'yellow'
+}
 
+categories = []
+for idx, row in df.iterrows():
+        if row['taxonomic_chain'] == reference_species and row[colname_w_smiles] == reference_smiles:
+                categories.append('Reference species & SMILES')
+        elif row['taxonomic_chain'] == reference_species:
+                categories.append('Reference species, other SMILES')
+        elif row['taxonomic_chain'].startswith(genus_prefix):
+                categories.append('Other species in genus')
+        elif row['taxonomic_chain'].startswith(family_prefix):
+                categories.append('Other genus in family')
+        else:
+                categories.append('Other families')
+
+# Plot each category in order, so "Other families" is at the bottom
 plt.figure(figsize=(10, 8))
-scatter = plt.scatter(
-        [v[0] for v in vecs_tsne],
-        [v[1] for v in vecs_tsne],
-        c=colors,
-        alpha=0.7
-)
+for cat in category_order:
+        idxs = [i for i, c in enumerate(categories) if c == cat]
+        size = 60 if cat == 'Reference species & SMILES' else 10
+        plt.scatter(
+                [vecs_tsne[i][0] for i in idxs],
+                [vecs_tsne[i][1] for i in idxs],
+                c=color_map[cat],
+                alpha=0.7,
+                label=cat,
+                edgecolors='none',
+                s=size,
+                zorder=category_order.index(cat)  # ensure later categories are drawn on top
+        )
+
 handles = [
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='black', markersize=8, label='Reference species & SMILES'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=8, label='Reference species, other SMILES'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=8, label='Other species in genus'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=8, label='Other genus in family'),
-        Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', markersize=8, label='Other families'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[cat], markersize=8, label=cat)
+        for cat in reversed(category_order)
 ]
 plt.legend(handles=handles, bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
 plt.xlabel('tSNE-1')
