@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.ticker import MultipleLocator
 from scipy import stats
 import ast
 import math
@@ -18,6 +20,10 @@ try:
 except ImportError:
     print("PyTorch is not available, skipping import and running calculations on CPU.")
 
+# Run this to reload utils.py if you make changes to it
+# import importlib
+# import utils
+# importlib.reload(utils)
 
 def convert_to_array(x):
     """
@@ -511,3 +517,82 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
         plt.savefig(save_typical_molecules_png)
     else:
         plt.show()
+
+def plot_tsne_results(df, reference_species, dotsize='small'):
+    # plot tSNE results
+    parts = reference_species.split('-')
+    genus_prefix = '-'.join(parts[:-1]) + '-'
+    family_prefix = '-'.join(parts[:-2]) + '-'
+    class_prefix = '-'.join(parts[:-3]) + '-'
+
+    categories = []
+    for _, row in df.iterrows():
+            if row['taxonomic_chain'] == reference_species:
+                    categories.append('Reference species')
+            elif row['taxonomic_chain'].startswith(genus_prefix):
+                    categories.append('Other species in genus')
+            elif row['taxonomic_chain'].startswith(family_prefix):
+                    categories.append('Other genus in family')
+            elif row['taxonomic_chain'].startswith(class_prefix):
+                    categories.append('Other families in class')
+            else:
+                    categories.append('Other classes')
+
+    category_order = [
+            'Other classes',
+            'Other families in class',
+            'Other genus in family',
+            'Other species in genus',
+            'Reference species'
+    ]
+    color_map = {
+            'Reference species': 'black',
+            'Other species in genus': 'green',
+            'Other genus in family': 'red',
+            'Other families in class': 'yellow',
+            'Other classes': 'gray',
+    }
+
+    plt.figure(figsize=(10, 8))
+    # Assign a unique dot size for each category based on its order (higher order = larger dot)
+    size_map = {}
+    if dotsize == 'small':
+        for i, cat in enumerate(category_order):
+            size_map[cat] = 5 + 5 * i
+    elif dotsize == 'large':
+        for i, cat in enumerate(category_order):
+            size_map[cat] = (1 + 3 * i) ** 2  # Matplotlib's scatter marker size is in points^2
+    else:
+        for cat in category_order:
+            size_map[cat] = 20
+    # Plot each category in order, so that closer categories are not hidden by more distant ones
+    for cat in category_order:
+        idxs = [i for i, c in enumerate(categories) if c == cat]
+        if not idxs:
+            continue
+        plt.scatter(
+            [df['tsne_1'].iloc[i] for i in idxs],
+            [df['tsne_2'].iloc[i] for i in idxs],
+            c=color_map[cat],
+            alpha=1.0,
+            label=cat,
+            edgecolors='none',
+            s=size_map[cat]
+        )
+
+    handles = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[cat], markersize=8, label=cat)
+            for cat in reversed(category_order) if cat != 'Other classes'
+    ]
+    plt.legend(handles=handles, loc='upper right', borderaxespad=0.2)
+    plt.xlabel('tSNE-1', fontsize=16, fontweight='bold')
+    plt.ylabel('tSNE-2', fontsize=16, fontweight='bold')
+    plt.gca().set_aspect('equal', adjustable='datalim')
+    plt.tick_params(axis='both', which='major', labelsize=14)
+    plt.gca().tick_params(axis='both', labelsize=14, width=2)
+    for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
+            label.set_fontweight('bold')
+    plt.gca().xaxis.set_major_locator(MultipleLocator(100))
+    plt.gca().yaxis.set_major_locator(MultipleLocator(100))
+    plt.tight_layout()
+    plt.show()
