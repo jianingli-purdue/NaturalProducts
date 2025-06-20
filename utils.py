@@ -16,7 +16,7 @@ except ImportError:
     print("RDKit is not available, skipping import and using it for SMILES canonicalization etc.")
 
 try:
-    import torch
+    import torch  # type: ignore
 except ImportError:
     print("PyTorch is not available, skipping import and running calculations on CPU.")
 
@@ -518,7 +518,7 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
     else:
         plt.show()
 
-def plot_tsne_results(df, reference_species, dotsize='small'):
+def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=None, radii=None):
     # plot tSNE results
     parts = reference_species.split('-')
     genus_prefix = '-'.join(parts[:-1]) + '-'
@@ -579,6 +579,15 @@ def plot_tsne_results(df, reference_species, dotsize='small'):
             edgecolors='none',
             s=size_map[cat]
         )
+        if center_of_circles is not None:
+            i_radius = len(category_order) - 1 - category_order.index(cat)
+            if i_radius < len(radii):
+                radius = radii[i_radius]
+                circle = plt.Circle(center_of_circles, radius, 
+                                    color=color_map[cat], fill=False, linestyle='dotted',
+                                    linewidth=2, alpha=1,
+                )
+                plt.gca().add_patch(circle)
 
     handles = [
             Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[cat], markersize=8, label=cat)
