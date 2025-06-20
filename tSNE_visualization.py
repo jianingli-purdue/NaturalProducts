@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 
 if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Visualize chem space after dimensionality reduction with tSNE.')
-        parser.add_argument('--data_folder', type=str, default='./data', help='Path to the data folder.')
+        parser.add_argument('--data_folder', type=str, default='./data', help='Path to the data folder, which contains the csv file with embeddings.')
         parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
         parser.add_argument('--output_folder', type=str, default='./tSNE_plots', help='Path to the output folder for tSNE plots.')
         parser.add_argument('--td_selection', type=int, default=3, help='Max taxonomic distance to consider for selection of datapoints to build tSNE map.')
