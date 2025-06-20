@@ -36,7 +36,7 @@ def convert_to_array(x):
         numpy.ndarray or None: Converted array if successful, None if conversion fails
     """
     try:
-        return np.array(ast.literal_eval(x), dtype=float)
+        return np.array(ast.literal_eval(x), dtype=np.float32)
     except (ValueError, SyntaxError):
         print(f"Could not convert {x}")
         return None  # Return None if the conversion fails
@@ -518,7 +518,7 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
     else:
         plt.show()
 
-def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=None, radii=None):
+def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=None, radii=None, png_filename=None):
     # plot tSNE results
     parts = reference_species.split('-')
     genus_prefix = '-'.join(parts[:-1]) + '-'
@@ -549,8 +549,8 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
             'Reference species': 'black',
             'Other species in genus': 'green',
             'Other genus in family': 'red',
-            'Other families in class': 'yellow',
-            'Other classes': 'gray',
+            'Other families in class': 'lightgrey',
+            'Other classes': 'yellow',
     }
 
     plt.figure(figsize=(10, 8))
@@ -561,7 +561,7 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
             size_map[cat] = 5 + 5 * i
     elif dotsize == 'large':
         for i, cat in enumerate(category_order):
-            size_map[cat] = (1 + 3 * i) ** 2  # Matplotlib's scatter marker size is in points^2
+            size_map[cat] = (1 + 2 * i) ** 2  # Matplotlib's scatter marker size is in points^2
     else:
         for cat in category_order:
             size_map[cat] = 20
@@ -580,11 +580,11 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
             s=size_map[cat]
         )
         if center_of_circles is not None:
-            i_radius = len(category_order) - 1 - category_order.index(cat)
-            if i_radius < len(radii):
+            i_radius = len(category_order) - 2 - category_order.index(cat)
+            if 0 <= i_radius < len(radii):
                 radius = radii[i_radius]
                 circle = plt.Circle(center_of_circles, radius, 
-                                    color=color_map[cat], fill=False, linestyle='dotted',
+                                    color=color_map[cat], fill=False,
                                     linewidth=2, alpha=1,
                 )
                 plt.gca().add_patch(circle)
@@ -604,4 +604,10 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
     plt.gca().xaxis.set_major_locator(MultipleLocator(100))
     plt.gca().yaxis.set_major_locator(MultipleLocator(100))
     plt.tight_layout()
-    plt.show()
+    
+    if png_filename:
+        os.makedirs(os.path.dirname(png_filename), exist_ok=True)
+        plt.savefig(png_filename, dpi=600)
+    else:
+        plt.show()
+    plt.close()
