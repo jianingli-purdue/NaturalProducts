@@ -528,7 +528,7 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
     categories = []
     for _, row in df.iterrows():
             if row['taxonomic_chain'] == reference_species:
-                    categories.append('Reference species')
+                    categories.append('Current species')
             elif row['taxonomic_chain'].startswith(genus_prefix):
                     categories.append('Other species in genus')
             elif row['taxonomic_chain'].startswith(family_prefix):

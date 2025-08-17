@@ -10,6 +10,7 @@ if __name__ == '__main__':
         parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
         parser.add_argument('--output_folder', type=str, default='./tSNE_plots', help='Path to the output folder for tSNE plots.')
         parser.add_argument('--td_selection', type=int, default=3, help='Max taxonomic distance to consider for selection of datapoints to build tSNE map.')
+        parser.add_argument('--size_threshold', type=int, default=15, help='Minimum number of molecules in a current species to include it into analysis.')
         parser.add_argument('--reference_species', type=str, default='Eukaryota-Viridiplantae-Streptophyta-Magnoliopsida-Celastraceae-Tripterygium-Tripterygium wilfordii', help='Reference species.')
         parser.add_argument('--reference_smiles', type=str, default='CC(=O)OC1C2C(OC(=O)c3ccccc3)C(OC(=O)c3ccccc3)C3(C)C(OC(=O)c4ccccc4)C(OC(=O)c4ccccc4)CC(C)C13OC2(C)C', help='Reference SMILES from the reference species.')
         args = parser.parse_args()
@@ -20,6 +21,7 @@ if __name__ == '__main__':
         td_selection = args.td_selection
         reference_species = args.reference_species
         reference_smiles = args.reference_smiles
+        size_threshold = args.size_threshold
 
         # data_folder = 'C:\\Users\\anton\\Desktop\\c\\JianingLi\\data'
         # output_folder = 'C:\\Users\\anton\\Desktop\\c\\JianingLi\\tSNE_plots'
@@ -82,6 +84,14 @@ if __name__ == '__main__':
         if df_reference_smiles.empty:
                 raise ValueError(f"Reference SMILES '{reference_smiles}' not found in the dataset.")
         
+        # When we built the tSNE map, we used all SMILES from `selection`, but now we'll keep only SMILES from species with at least `size_threshold` NPs
+        file_with_n_molecules_per_taxonomic_chain = f'{data_folder}/n_molecules_per_taxonomic_chain.json'
+        import json
+        with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
+                nsmiles_per_taxonomic_chain = json.loads(f.read())
+
+        df = df[df['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold].copy()
+                
         vec0 = df_reference_smiles['latent_vector'].values[0]
         vec0_tsne = df_reference_smiles['tsne_1'].values[0], df_reference_smiles['tsne_2'].values[0]
         print("Reference SMILES:")
