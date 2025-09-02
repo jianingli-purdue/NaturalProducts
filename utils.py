@@ -457,8 +457,29 @@ def run_all(
         sample2 = df_above_threshold[
             df_above_threshold['taxonomic_distance'] == tdistance2
             ][f"distance_percentile_{percentile}"]
-        st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
-        data_Wstat += [st.statistic, st.pvalue, st.df]
+        
+        # Check if we have enough data for meaningful t-test
+        if len(sample1) < 2 or len(sample2) < 2:
+            # Not enough data for t-test
+            data_Wstat += [np.nan, np.nan, np.nan]
+            columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+            continue
+            
+        # Check for zero variance which can cause division by zero
+        if sample1.var() == 0 and sample2.var() == 0:
+            # Both samples have zero variance - no meaningful difference
+            data_Wstat += [0.0, 1.0, len(sample1) + len(sample2) - 2]
+            columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+            continue
+            
+        try:
+            st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
+            data_Wstat += [st.statistic, st.pvalue, st.df]
+        except (ValueError, RuntimeWarning) as e:
+            # Handle any remaining edge cases
+            print(f"Warning: Could not compute t-test for percentile {percentile}: {e}")
+            data_Wstat += [np.nan, np.nan, np.nan]
+        
         columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
 
     df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
@@ -518,7 +539,7 @@ def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
     else:
         plt.show()
 
-def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=None, radii=None, png_filename=None):
+def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=None, radii=None, png_filename=None, xlim=None, ylim=None):
     # plot tSNE results
     parts = reference_species.split('-')
     genus_prefix = '-'.join(parts[:-1]) + '-'
@@ -543,11 +564,11 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
             'Other families in class',
             'Other genus in family',
             'Other species in genus',
-            'Reference species'
+            'Current species'
     ]
     color_map = {
-            'Reference species': 'black',
-            'Other species in genus': 'green',
+            'Current species': 'black',
+            'Other species in genus': '#00A9A5',
             'Other genus in family': 'red',
             'Other families in class': 'lightgrey',
             'Other classes': 'yellow',
@@ -601,8 +622,27 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
     plt.gca().tick_params(axis='both', labelsize=14, width=2)
     for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
             label.set_fontweight('bold')
-    plt.gca().xaxis.set_major_locator(MultipleLocator(100))
-    plt.gca().yaxis.set_major_locator(MultipleLocator(100))
+    plt.gca().xaxis.set_major_locator(MultipleLocator(50))
+    plt.gca().yaxis.set_major_locator(MultipleLocator(50))
+    
+    # Set axis limits if provided
+    if xlim is not None:
+        plt.xlim(xlim)
+        # Build fixed xticks within limits, excluding the exact upper bound
+        xmin, xmax = xlim
+        xtick_start = np.ceil(xmin / 50.0) * 50.0
+        xtick_end = np.floor((xmax - 1e-6) / 50.0) * 50.0
+        xticks = np.arange(xtick_start, xtick_end + 1e-6, 50.0)
+        plt.gca().set_xticks(xticks)
+    if ylim is not None:
+        plt.ylim(ylim)
+        # Build fixed yticks within limits, excluding the exact upper bound
+        ymin, ymax = ylim
+        ytick_start = np.ceil(ymin / 50.0) * 50.0
+        ytick_end = np.floor((ymax - 1e-6) / 50.0) * 50.0
+        yticks = np.arange(ytick_start, ytick_end + 1e-6, 50.0)
+        plt.gca().set_yticks(yticks)
+    
     plt.tight_layout()
     
     if png_filename:
