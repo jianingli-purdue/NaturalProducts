@@ -353,6 +353,18 @@ def visualize_chemical_distances_vs_taxonomic_distances(dfc, df_stats_chemical_d
         plt.savefig(save_png.replace('.png', f'_percentile{percentile}.png')) if save_png else plt.show()
 
 
+def taxonomic_distance_from_lineages(lineage1, lineage2, n_taxonomic_levels = 7):
+    p1 = [p.strip() for p in lineage1.split('-') if p.strip()]
+    p2 = [p.strip() for p in lineage2.split('-') if p.strip()]
+    if len(p1) < n_taxonomic_levels or len(p2) < n_taxonomic_levels:
+        return None
+    p1, p2 = p1[-n_taxonomic_levels:], p2[-n_taxonomic_levels:]
+    for i in range(n_taxonomic_levels):
+        if p1[i] != p2[i]:
+            return n_taxonomic_levels - i
+    return 0
+
+
 def run_all(
         df,
         ref_chain,
