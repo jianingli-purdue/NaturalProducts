@@ -16,9 +16,10 @@ The script can be run from command line with arguments:
 """
 
 # run this when you change utils.py to reload functions from utils.py
-# import importlib
-# import utils
-# importlib.reload(utils)
+import importlib
+import utils
+importlib.reload(utils)
+from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
 
 from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
 import pandas as pd
@@ -27,38 +28,79 @@ import argparse
 if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Run calculations for p-value distributions.')
         parser.add_argument('--data_folder', type=str, default='./data', help='Path to the data folder.')
+        parser.add_argument('--dataset', type=str, default='lotus', help='Name of the dataset to use.')
         parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
-        parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
-        parser.add_argument('--lower_limit_ref_size', type=int, default=180, help='Include reference species with number of molecules greater or equal than this value.')
+        parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
+        parser.add_argument('--lower_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules greater or equal than this value.')
         parser.add_argument('--size_threshold', type=int, default=15, help='Minimum number of molecules for a current species.')
         parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules for a current species to be included in slow low-level computations.')
         parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to compute.')
+        parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
         parser.add_argument('--tdistance1', type=int, default=1, help='One of the taxonomic distances for statistical comparisons.')
         parser.add_argument('--tdistance2', type=int, default=3, help='The other taxonomic distance for statistical comparisons.')
+        parser.add_argument("--evo_distances", default="./data/all_species_distances_upper_triangle.csv", help="Path to the csv file with evolutionary distances between species")
+        parser.add_argument("--max_evo_distance", type=float, default=100., help="Maximum evolutionary distance to consider for computing chemical distances.")
         args = parser.parse_args()
 
         data_folder = args.data_folder
+        dataset = args.dataset
         encoding = args.encoding
         percentiles = list(map(int, args.percentiles.split(',')))
+        size_threshold = args.size_threshold
+        min_size_threshold = args.min_size_threshold
+        evo_distance_type = args.evo_distance_type
+        evo_distances_file = args.evo_distances
+        max_evo_distance = args.max_evo_distance
+        
+        data_folder = './data'
+        dataset = 'coconut'
+        encoding = 'ecfp'
+        percentiles = [10, 25, 40, 50, 60, 75, 90]
+        size_threshold = 15
+        min_size_threshold = 20
+        evo_distance_type = "continuous"
+        evo_distances_file = "./data/all_species_distances_upper_triangle_head1000000.csv"
+        max_evo_distance = 100.
+        
         
         colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
         encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
         
-        filename_from_encoding = {
-                'chemformer': 'Lotus_fulldata_latent_matrix_Chemformer.csv',
-                'smitrans': 'Lotus_fulldata_latent_matrix_SMILES-TRANSFORMER.csv',
-                'SELformer': 'Lotus_fulldata_SELformer.csv',
-                'nyan': 'Lotus_fulldata_latent_matrix_nyan.csv',
-                'molvae': 'Lotus.csv',
-        }
+        if dataset == 'lotus':
+                filename_from_encoding = {
+                        'chemformer': 'Lotus_fulldata_latent_matrix_Chemformer.csv',
+                        'smitrans': 'Lotus_fulldata_latent_matrix_SMILES-TRANSFORMER.csv',
+                        'SELformer': 'Lotus_fulldata_SELformer.csv',
+                        'nyan': 'Lotus_fulldata_latent_matrix_nyan.csv',
+                        'molvae': 'Lotus.csv',
+                }
+                taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']        
+        elif dataset == 'coconut':
+                filename_from_encoding = {
+                        'ecfp': 'Coconut_on_tree_51w_no_metal_and_salt.csv',
+                }
+                taxonomic_levels = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'clean_species_name']
+        else:
+                raise ValueError(f"Unknown dataset {dataset}")
 
         if encoding in filename_from_encoding:
                 data_file = f'{data_folder}/{filename_from_encoding[encoding]}'
         else:
                 raise ValueError(f"Unknown encoding {encoding}")
         
-        df = load_data(file_path=data_file, colname_w_smiles=colname_w_smiles, colname_w_features=encoding_columns, top_rows=None, compute_ECFP_fingerprints=False)
-        df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
+        df = load_data(
+                file_path=data_file, 
+                colname_w_smiles=colname_w_smiles,
+                colname_w_features=(encoding_columns if encoding != 'ecfp' else None), 
+                top_rows=None, 
+                compute_ECFP_fingerprints=(encoding=='ecfp'),
+                taxonomic_levels = taxonomic_levels
+                )
+        
+        if encoding == 'ecfp':
+                encoding_columns = "ECFP6_2048"
+        else:
+                df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
         print(df[encoding_columns].head())
 
         df_taxonomic_chain_ref = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
@@ -68,7 +110,23 @@ if __name__ == '__main__':
                 (df_taxonomic_chain_ref['nmol'] < nmol_upper_cutoff) & 
                 (df_taxonomic_chain_ref['nmol'] >= nmol_lower_cutoff)
         ]['taxonomic_chain'].values
-
+        
+        if evo_distance_type == 'discrete':
+                td_params = {
+                        'evo_distance_type': 'discrete',
+                        'max_taxonomic_distance': 3,   # 2 for debugging, 3 for production runs
+                        'tdistance1': args.tdistance1,
+                        'tdistance2': args.tdistance2,
+                        }
+        elif evo_distance_type == 'continuous':                
+                df_evo_distances = pd.read_csv(evo_distances_file, usecols=["distance", "tax_lineage_name_1", "tax_lineage_name_2"])
+                df_evo_distances = df_evo_distances[df_evo_distances["distance"] <= max_evo_distance]
+                td_params = {
+                        'evo_distance_type': 'continuous',
+                        'max_evo_distance': max_evo_distance,
+                        'df_evo_distances': df_evo_distances,
+                        }
+                
         for taxonomic_chain_ref in taxonomic_chains_ref:
                 print(f"Starting with taxonomic chain: {taxonomic_chain_ref}")
                 try:
@@ -76,13 +134,11 @@ if __name__ == '__main__':
                                 encoding=encoding,
                                 encoding_columns=encoding_columns,
                                 ref_chain=taxonomic_chain_ref.split('-'),
-                                max_taxonomic_distance=3,   # 2 for debugging, 3 for production runs
-                                size_threshold=args.size_threshold,
-                                min_size_threshold=args.min_size_threshold,
-                                distance_metric='Euclidean',
-                                percentiles=percentiles,
-                                tdistance1=args.tdistance1,
-                                tdistance2=args.tdistance2,
+                                td_params = td_params,
+                                size_threshold=size_threshold,
+                                min_size_threshold=min_size_threshold,
+                                distance_metric=('Euclidean' if encoding != 'ecfp' else 'Tanimoto'),
+                                percentiles=percentiles,                                
                                 verbose=True,
                                 calc_stats_chemical_distances_vs_taxonomic_distances=False,
                                 save_dataframes_to_folder=data_folder,

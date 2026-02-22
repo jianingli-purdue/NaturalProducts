@@ -9,9 +9,11 @@ import ast
 import math
 import json
 
+RDKIT_AVAILABLE = False
 try:
     from rdkit import Chem
     from rdkit.Chem import rdMolDescriptors, Draw
+    RDKIT_AVAILABLE = True
 except ImportError:
     print("RDKit is not available, skipping import and using it for SMILES canonicalization etc.")
 
@@ -41,12 +43,25 @@ def convert_to_array(x):
         print(f"Could not convert {x}")
         return None  # Return None if the conversion fails
 
+def safely_canonicalize_smiles(smi):
+    try:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            print(f"Could not parse SMILES {smi}, returning original.")
+            return smi
+        smi2 = Chem.MolToSmiles(mol, canonical=True)
+        return smi2
+    except Exception as e:
+        print(f"Error canonicalizing SMILES {smi}: {e}, returning original.")
+        return smi
+
 def load_data(
         file_path='./Lotus.csv',
         colname_w_smiles='smiles', # name of the column in the input file, may be not canonicalized smiles
         colname_w_features=None,   # if features (aka embeddings) are already available in the input file, specify the column name here
         top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows
         compute_ECFP_fingerprints=False,
+        taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species'], # the default is for Lotus
 ):
     """
     Load and preprocess molecular data from a CSV file.
@@ -61,7 +76,6 @@ def load_data(
     Returns:
         pandas.DataFrame: Processed dataframe containing molecular data and taxonomic information
     """
-    taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']
     cols_to_load = [colname_w_smiles] + taxonomic_levels
     if colname_w_features:
         cols_to_load += [colname_w_features]
@@ -72,11 +86,11 @@ def load_data(
     unique_taxonomies = df['taxonomic_chain'].unique()
     print(f"The size of the dataset {len(df)}, {len(unique_taxonomies)} unique species found")
     
-    if 'rdkit' not in globals():
+    if not RDKIT_AVAILABLE:
         print("RDKit is not available, skipping SMILES canonicalization and Morgan fingerprints computation.")
     else:
         smiles_colname = 'canonicalized_smiles'
-        df[smiles_colname] = df[colname_w_smiles].apply(lambda s: Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True))        
+        df[smiles_colname] = df[colname_w_smiles].apply(lambda s: safely_canonicalize_smiles(s))
         print(f"{sum(df[smiles_colname] != df[colname_w_smiles])} molecules had non-canonical SMILES, changing them to canonical.")
 
         if compute_ECFP_fingerprints:
@@ -127,10 +141,11 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
     Returns:
         tuple: (25th percentile distance, reference SMILES, current SMILES, 
                50th percentile distance, reference SMILES, current SMILES)
-    """
+    """    
+    
     # autoselection of the name of the column with smiles, if not provided explicitly, depending on whether rdkit tools for canonicalization are available
     if smiles_colname is None:
-        smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'canonical_smiles'
+        smiles_colname='canonicalized_smiles' if RDKIT_AVAILABLE else 'canonical_smiles'
     
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
@@ -218,7 +233,7 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
 def chemical_distances_vs_taxonomic_distances(
         df,
         ref_chain,
-        max_taxonomic_distance=2,
+        td_params={},
         size_threshold=20,
         encoding_columns='ECFP6_2048',
         distance_metric='Tanimoto',
@@ -233,7 +248,7 @@ def chemical_distances_vs_taxonomic_distances(
     Args:
         df (pandas.DataFrame): Input dataframe with molecular data
         ref_chain (list): Reference taxonomic chain
-        max_taxonomic_distance (int): Maximum taxonomic distance to consider
+        td_params (dict): Parameters for evo distance computation
         size_threshold (int): Minimum number of molecules required
         encoding_columns (str): Column containing molecular encodings
         distance_metric (str): Type of distance metric
@@ -244,38 +259,70 @@ def chemical_distances_vs_taxonomic_distances(
     Returns:
         pandas.DataFrame: DataFrame containing chemical distances for different taxonomic distances
     """
+
     taxonomic_chain_ref = '-'.join(ref_chain[0:7])
-    chemical_distances_vs_taxonomic_distances = []
-    for taxonomic_distance in range(max_taxonomic_distance + 1):
-        # get the list of all taxonomic_chains separated from the ref species by this taxonomic_distance
-        df['mask'] = True
-        for level in range(7 - taxonomic_distance):
-            df['mask'] = (df[taxonomic_levels[level]] == ref_chain[level]) & df['mask']
-        if taxonomic_distance > 0:
-            level = 7 - taxonomic_distance
-            df['mask'] = (df[taxonomic_levels[level]] != ref_chain[level]) & df['mask']
-        taxonomic_chains = df[df['mask']]['taxonomic_chain'].unique()
+    chemical_distances_vs_evo_distances = []
+    
+    if td_params['evo_distance_type'] == 'discrete':
+        for taxonomic_distance in range(td_params['max_taxonomic_distance'] + 1):
+            # get the list of all taxonomic_chains separated from the ref species by this taxonomic_distance
+            df['mask'] = True
+            for level in range(7 - taxonomic_distance):
+                df['mask'] = (df[taxonomic_levels[level]] == ref_chain[level]) & df['mask']
+            if taxonomic_distance > 0:
+                level = 7 - taxonomic_distance
+                df['mask'] = (df[taxonomic_levels[level]] != ref_chain[level]) & df['mask']
+            taxonomic_chains = df[df['mask']]['taxonomic_chain'].unique()
 
+            for taxonomic_chain in taxonomic_chains:
+                distances_and_smileses = chemical_distance(df,
+                                                        taxonomic_chain,
+                                                        taxonomic_chain_ref,
+                                                        size_threshold=size_threshold,
+                                                        encoding_columns=encoding_columns,
+                                                        distance_metric=distance_metric,
+                                                        save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
+                                                        encoding=encoding,
+                                                        percentiles=percentiles,
+                                                        )
+                if distances_and_smileses[0] is not None:
+                    chemical_distances_vs_evo_distances.append(
+                        [taxonomic_chain_ref, taxonomic_chain, taxonomic_distance] + list(distances_and_smileses))
+    elif td_params['evo_distance_type'] == 'continuous':
+        df_evo_distances = td_params['df_evo_distances']
+        taxonomic_chains = (
+            set(df_evo_distances[df_evo_distances['tax_lineage_name_1']==taxonomic_chain_ref]['tax_lineage_name_2'])
+            .union(
+                set(df_evo_distances[df_evo_distances['tax_lineage_name_2']==taxonomic_chain_ref]['tax_lineage_name_1'])
+                )
+        )
+        
         for taxonomic_chain in taxonomic_chains:
+            if taxonomic_chain == taxonomic_chain_ref:
+                continue
+            evo_distance = df_evo_distances[
+                ((df_evo_distances['tax_lineage_name_1'] == taxonomic_chain_ref) & (df_evo_distances['tax_lineage_name_2'] == taxonomic_chain)) |
+                ((df_evo_distances['tax_lineage_name_2'] == taxonomic_chain_ref) & (df_evo_distances['tax_lineage_name_1'] == taxonomic_chain))
+            ]['distance'].values[0]
             distances_and_smileses = chemical_distance(df,
-                                                       taxonomic_chain,
-                                                       taxonomic_chain_ref,
-                                                       size_threshold=size_threshold,
-                                                       encoding_columns=encoding_columns,
-                                                       distance_metric=distance_metric,
-                                                       save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
-                                                       encoding=encoding,
-                                                       percentiles=percentiles,
-                                                       )
+                                                    taxonomic_chain,
+                                                    taxonomic_chain_ref,
+                                                    size_threshold=size_threshold,
+                                                    encoding_columns=encoding_columns,
+                                                    distance_metric=distance_metric,
+                                                    save_data_for_percentiles_to_folder=save_data_for_percentiles_to_folder,
+                                                    encoding=encoding,
+                                                    percentiles=percentiles,
+                                                    )
             if distances_and_smileses[0] is not None:
-                chemical_distances_vs_taxonomic_distances.append(
-                    [taxonomic_chain_ref, taxonomic_chain, taxonomic_distance] + list(distances_and_smileses))
-
-    columns=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance']
+                chemical_distances_vs_evo_distances.append(
+                    [taxonomic_chain_ref, taxonomic_chain, evo_distance] + list(distances_and_smileses))
+        
+    columns=['evo_chain_ref', 'evo_chain', 'evo_distance']
     for percentile in percentiles:
         columns += [f'distance_percentile_{percentile}', f'smi_ref_{percentile}', f'smi_current_{percentile}']
         
-    return pd.DataFrame(chemical_distances_vs_taxonomic_distances, columns=columns)
+    return pd.DataFrame(chemical_distances_vs_evo_distances, columns=columns)
 
 
 def stats_chemical_distances_vs_taxonomic_distances(
@@ -368,7 +415,7 @@ def taxonomic_distance_from_lineages(lineage1, lineage2, n_taxonomic_levels = 7)
 def run_all(
         df,
         ref_chain,
-        max_taxonomic_distance=2,   # 2 for debugging, 3 for production runs
+        td_params={'evo_distance_type': 'continuous',},
         size_threshold=20,
         min_size_threshold=10,
         percentiles=[25, 50],
@@ -376,8 +423,6 @@ def run_all(
         encoding_columns='ECFP6_2048',
         distance_metric='Tanimoto',
         verbose=True,
-        tdistance1=2,
-        tdistance2=3,
         calc_stats_chemical_distances_vs_taxonomic_distances=False,
         save_dataframes_to_folder=None,
         save_data_for_percentiles_to_folder=None,
@@ -389,7 +434,7 @@ def run_all(
     Args:
         df (pandas.DataFrame): Input dataframe with molecular data
         ref_chain (list): Reference taxonomic chain
-        max_taxonomic_distance (int): Maximum taxonomic distance to analyze
+        td_params (dict): Parameters for taxonomic distance calculations
         size_threshold (int): Minimum molecules for analysis
         min_size_threshold (int): Absolute minimum molecules required
         encoding (str): Type of molecular encoding
@@ -427,7 +472,7 @@ def run_all(
         os.makedirs(save_data_for_percentiles_to_folder, exist_ok=True)
         df_chemical_distances_vs_taxonomic_distances = chemical_distances_vs_taxonomic_distances(
             df, ref_chain,
-            max_taxonomic_distance=max_taxonomic_distance,  # 2 for debugging, 3 for production runs
+            td_params=td_params,
             size_threshold=min_size_threshold,
             encoding_columns=encoding_columns,
             distance_metric=distance_metric,
@@ -440,7 +485,7 @@ def run_all(
             
     # select only those rows where size >= size_threshold
     file_with_n_molecules_per_taxonomic_chain = f'{save_dataframes_to_folder}/n_molecules_per_taxonomic_chain.json'
-    smiles_colname='canonicalized_smiles' if 'rdkit' in globals() else 'canonical_smiles'
+    smiles_colname='canonicalized_smiles' if RDKIT_AVAILABLE else 'canonical_smiles'
     nsmiles_per_taxonomic_chain = {}
     if os.path.exists(file_with_n_molecules_per_taxonomic_chain):
         with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
@@ -448,79 +493,104 @@ def run_all(
             # nsmiles_per_taxonomic_chain = {k: v for k, v in nsmiles_per_taxonomic_chain.items()}
     if len(nsmiles_per_taxonomic_chain) == 0:    
         nsmiles_per_taxonomic_chain = {}
-        taxonomic_chains = df['taxonomic_chain'].unique()
+        taxonomic_chains = df['evo_chain'].unique()
         for taxonomic_chain in taxonomic_chains:
-            set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
+            set_current = set(df[df['evo_chain'] == taxonomic_chain][smiles_colname])
             nsmiles_per_taxonomic_chain[taxonomic_chain] = len(set_current)
         with open(file_with_n_molecules_per_taxonomic_chain, 'w') as f:
             f.write(json.dumps(nsmiles_per_taxonomic_chain))
     df_above_threshold = df_chemical_distances_vs_taxonomic_distances[
-        df_chemical_distances_vs_taxonomic_distances['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold
+        df_chemical_distances_vs_taxonomic_distances['evo_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold
         ].copy()
 
-    # calculate Welch's t-test for difference between taxonomic distances tdistance1 and tdistance2 (by default, 2 and 3)
-    data_Wstat = [taxonomic_chain_ref]
-    columns_Wstat = ['taxonomic_chain_ref']
+    if td_params['evo_distance_type'] == 'discrete':
+        # calculate Welch's t-test for difference between taxonomic distances tdistance1 and tdistance2 (by default, 2 and 3)
+        data_Wstat = [taxonomic_chain_ref]
+        columns_Wstat = ['taxonomic_chain_ref']
 
-    for percentile in percentiles:
-        sample1 = df_above_threshold[
-            df_above_threshold['taxonomic_distance'] == tdistance1
-            ][f"distance_percentile_{percentile}"]
-        sample2 = df_above_threshold[
-            df_above_threshold['taxonomic_distance'] == tdistance2
-            ][f"distance_percentile_{percentile}"]
-        
-        # Check if we have enough data for meaningful t-test
-        if len(sample1) < 2 or len(sample2) < 2:
-            # Not enough data for t-test
-            data_Wstat += [np.nan, np.nan, np.nan]
-            columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
-            continue
+        for percentile in percentiles:
+            sample1 = df_above_threshold[
+                df_above_threshold['taxonomic_distance'] == td_params['tdistance1']
+                ][f"distance_percentile_{percentile}"]
+            sample2 = df_above_threshold[
+                df_above_threshold['taxonomic_distance'] == td_params['tdistance2']
+                ][f"distance_percentile_{percentile}"]
             
-        # Check for zero variance which can cause division by zero
-        if sample1.var() == 0 and sample2.var() == 0:
-            # Both samples have zero variance - no meaningful difference
-            data_Wstat += [0.0, 1.0, len(sample1) + len(sample2) - 2]
-            columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
-            continue
+            # Check if we have enough data for meaningful t-test
+            if len(sample1) < 2 or len(sample2) < 2:
+                # Not enough data for t-test
+                data_Wstat += [np.nan, np.nan, np.nan]
+                columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+                continue
+                
+            # Check for zero variance which can cause division by zero
+            if sample1.var() == 0 and sample2.var() == 0:
+                # Both samples have zero variance - no meaningful difference
+                data_Wstat += [0.0, 1.0, len(sample1) + len(sample2) - 2]
+                columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+                continue
+                
+            try:
+                st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
+                data_Wstat += [st.statistic, st.pvalue, st.df]
+            except (ValueError, RuntimeWarning) as e:
+                # Handle any remaining edge cases
+                print(f"Warning: Could not compute t-test for percentile {percentile}: {e}")
+                data_Wstat += [np.nan, np.nan, np.nan]
             
-        try:
-            st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
-            data_Wstat += [st.statistic, st.pvalue, st.df]
-        except (ValueError, RuntimeWarning) as e:
-            # Handle any remaining edge cases
-            print(f"Warning: Could not compute t-test for percentile {percentile}: {e}")
-            data_Wstat += [np.nan, np.nan, np.nan]
-        
-        columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+            columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
 
-    df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
-    if save_dataframes_to_folder:
-        curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance2}_{encoding}_s{size_threshold}'
-        os.makedirs(curr_folder, exist_ok=True)
-        df_Welch_stat.to_csv(f'{curr_folder}/Welch_stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
+        df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
+        if save_dataframes_to_folder:
+            curr_folder = f'{save_dataframes_to_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{td_params["tdistance1"]}{td_params["tdistance2"]}_{encoding}_s{size_threshold}'
+            os.makedirs(curr_folder, exist_ok=True)
+            df_Welch_stat.to_csv(f'{curr_folder}/Welch_stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
 
-    # calculate statistics for chemical distances vs taxonomic distances
-    if calc_stats_chemical_distances_vs_taxonomic_distances:
-        df_stats_chemical_distances_vs_taxonomic_distances = stats_chemical_distances_vs_taxonomic_distances(
-            df_above_threshold,
-            taxonomic_chain_ref=taxonomic_chain_ref,
-            max_taxonomic_distance=max_taxonomic_distance,
-            verbose=verbose,
-            percentiles=percentiles,
-        )
-        df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
-        curr_folder = f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
-        os.makedirs(curr_folder, exist_ok=True)
-        df_stats_chemical_distances_vs_taxonomic_distances.to_csv(f'{curr_folder}/stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
-        if len(df_stats_chemical_distances_vs_taxonomic_distances) > 0:
-            visualize_chemical_distances_vs_taxonomic_distances(
+        # calculate statistics for chemical distances vs taxonomic distances
+        if calc_stats_chemical_distances_vs_taxonomic_distances:
+            df_stats_chemical_distances_vs_taxonomic_distances = stats_chemical_distances_vs_taxonomic_distances(
                 df_above_threshold,
-                df_stats_chemical_distances_vs_taxonomic_distances,
-                save_png=f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}/stat_chem_vs_tax_dist_{short_taxonomic_chain_ref}.png'
+                taxonomic_chain_ref=taxonomic_chain_ref,
+                max_taxonomic_distance=td_params['max_taxonomic_distance'],
+                verbose=verbose,
+                percentiles=percentiles,
             )
+            df_stats_chemical_distances_vs_taxonomic_distances = df_stats_chemical_distances_vs_taxonomic_distances.dropna(subset=[f'distance_percentile_{percentiles[0]}_ave'])
+            curr_folder = f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
+            os.makedirs(curr_folder, exist_ok=True)
+            df_stats_chemical_distances_vs_taxonomic_distances.to_csv(f'{curr_folder}/stat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
+            if len(df_stats_chemical_distances_vs_taxonomic_distances) > 0:
+                visualize_chemical_distances_vs_taxonomic_distances(
+                    df_above_threshold,
+                    df_stats_chemical_distances_vs_taxonomic_distances,
+                    save_png=f'{save_dataframes_to_folder}/stat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}/stat_chem_vs_tax_dist_{short_taxonomic_chain_ref}.png'
+                )
 
-    return df_Welch_stat
+        return df_Welch_stat
+    elif td_params['evo_distance_type'] == 'continuous':
+        # calculate t-stat and p-value for the correlation between the evo distance and chemistry distances for various percentiles
+        data_tstat = [taxonomic_chain_ref]
+        columns_tstat = ['taxonomic_chain_ref']
+
+        for percentile in percentiles:
+            r = np.corrcoef(
+                df_above_threshold['evo_distance'],
+                df_above_threshold[f"distance_percentile_{percentile}"]
+            )[0, 1]
+            dof = len(df_above_threshold) - 2
+            t_stat = r * np.sqrt((dof) / (1 - r**2)) 
+            p_value = stats.t.sf(t_stat, df=dof) # testing that the correlation is positive, one-sided test
+            
+            data_tstat += [t_stat, p_value, dof]
+            columns_tstat += [f'tstat_{percentile}', f't_pvalue_{percentile}', f'tdof_{percentile}']
+
+        df_tstat = pd.DataFrame([data_tstat], columns=columns_tstat)
+        if save_dataframes_to_folder:
+            curr_folder = f'{save_dataframes_to_folder}/tstat_chem_vs_tax_dist_csv_files_td_{encoding}_s{size_threshold}'
+            os.makedirs(curr_folder, exist_ok=True)
+            df_tstat.to_csv(f'{curr_folder}/tstat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
+
+        return df_tstat
 
 
 def draw_pairs_of_molecules(smi_curr, smi_ref, save_typical_molecules_png=None):
@@ -663,3 +733,17 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
     else:
         plt.show()
     plt.close()
+
+def filter_and_save_by_evo_distances(
+    max_evo_distance=1000,
+    evo_distances_file="./data/all_species_distances_upper_triangle.csv", 
+    save_filtered_file=True,
+    ):
+    
+    df_evo_distances = pd.read_csv(evo_distances_file)
+    df_evo_distances_filtered = df_evo_distances[df_evo_distances['distance'] <= max_evo_distance].copy()
+    if save_filtered_file:
+        filename = evo_distances_file.replace('.csv', f'_evo_distance_upto{max_evo_distance}.csv')
+        df_evo_distances_filtered.to_csv(filename, index=False)
+        
+    return df_evo_distances_filtered
