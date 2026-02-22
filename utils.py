@@ -499,6 +499,7 @@ def run_all(
             nsmiles_per_taxonomic_chain[taxonomic_chain] = len(set_current)
         with open(file_with_n_molecules_per_taxonomic_chain, 'w') as f:
             f.write(json.dumps(nsmiles_per_taxonomic_chain))
+        # pd.DataFrame([{'taxonomic_chain': key, 'nmol': value} for key, value in nsmiles_per_taxonomic_chain.items()]        ).sort_values(by='nmol', ascending=False).to_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv', index=False)
     df_above_threshold = df_chemical_distances_vs_taxonomic_distances[
         df_chemical_distances_vs_taxonomic_distances['evo_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold
         ].copy()
