@@ -16,10 +16,10 @@ The script can be run from command line with arguments:
 """
 
 # run this when you change utils.py to reload functions from utils.py
-import importlib
-import utils
-importlib.reload(utils)
-from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
+# import importlib
+# import utils
+# importlib.reload(utils)
+# from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
 
 from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
 import pandas as pd
@@ -28,8 +28,8 @@ import argparse
 if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Run calculations for p-value distributions.')
         parser.add_argument('--data_folder', type=str, default='./data', help='Path to the data folder.')
-        parser.add_argument('--dataset', type=str, default='lotus', help='Name of the dataset to use.')
-        parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
+        parser.add_argument('--dataset', type=str, default='coconut', help='Name of the dataset to use.')
+        parser.add_argument('--encoding', type=str, default='ecfp', help='ML Encoding used for converting SMILES to vectors.')
         parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
         parser.add_argument('--lower_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules greater or equal than this value.')
         parser.add_argument('--size_threshold', type=int, default=15, help='Minimum number of molecules for a current species.')
@@ -38,7 +38,7 @@ if __name__ == '__main__':
         parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
         parser.add_argument('--tdistance1', type=int, default=1, help='One of the taxonomic distances for statistical comparisons.')
         parser.add_argument('--tdistance2', type=int, default=3, help='The other taxonomic distance for statistical comparisons.')
-        parser.add_argument("--evo_distances", default="./data/all_species_distances_upper_triangle.csv", help="Path to the csv file with evolutionary distances between species")
+        parser.add_argument("--evo_distances", default="./data/all_species_distances_upper_triangle_evo_distance_upto100.csv", help="Path to the csv file with evolutionary distances between species")
         parser.add_argument("--max_evo_distance", type=float, default=100., help="Maximum evolutionary distance to consider for computing chemical distances.")
         args = parser.parse_args()
 
@@ -52,19 +52,17 @@ if __name__ == '__main__':
         evo_distances_file = args.evo_distances
         max_evo_distance = args.max_evo_distance
         
-        data_folder = './data'
-        dataset = 'coconut'
-        encoding = 'ecfp'
-        percentiles = [10, 25, 40, 50, 60, 75, 90]
-        size_threshold = 15
-        min_size_threshold = 20
-        evo_distance_type = "continuous"
-        evo_distances_file = "./data/all_species_distances_upper_triangle_head1000000.csv"
-        max_evo_distance = 100.
-        
+        # data_folder = './data'
+        # dataset = 'coconut'
+        # encoding = 'ecfp'
+        # percentiles = [10, 25, 40, 50, 60, 75, 90]
+        # size_threshold = 15
+        # min_size_threshold = 20
+        # evo_distance_type = "continuous"
+        # evo_distances_file = "./data/all_species_distances_upper_triangle_evo_distance_upto100.csv"
+        # max_evo_distance = 100.
         
         colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
-        encoding_columns='latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
         
         if dataset == 'lotus':
                 filename_from_encoding = {
@@ -74,12 +72,14 @@ if __name__ == '__main__':
                         'nyan': 'Lotus_fulldata_latent_matrix_nyan.csv',
                         'molvae': 'Lotus.csv',
                 }
-                taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']        
+                taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']    
+                encoding_columns = 'latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
         elif dataset == 'coconut':
                 filename_from_encoding = {
                         'ecfp': 'Coconut_on_tree_51w_no_metal_and_salt.csv',
                 }
                 taxonomic_levels = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'clean_species_name']
+                encoding_columns = None
         else:
                 raise ValueError(f"Unknown dataset {dataset}")
 
