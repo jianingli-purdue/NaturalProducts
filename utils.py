@@ -262,6 +262,7 @@ def chemical_distances_vs_taxonomic_distances(
 
     taxonomic_chain_ref = '-'.join(ref_chain[0:7])
     chemical_distances_vs_evo_distances = []
+    taxonomic_levels = td_params['taxonomic_levels']
     
     if td_params['evo_distance_type'] == 'discrete':
         for taxonomic_distance in range(td_params['max_taxonomic_distance'] + 1):

@@ -123,6 +123,7 @@ if __name__ == '__main__':
                         'max_taxonomic_distance': 3,   # 2 for debugging, 3 for production runs
                         'tdistance1': tdistance1,
                         'tdistance2': tdistance2,
+                        'taxonomic_levels': taxonomic_levels,
                         }
         elif evo_distance_type == 'continuous':                
                 df_evo_distances = pd.read_csv(evo_distances_file, usecols=["distance", "tax_lineage_name_1", "tax_lineage_name_2"])
