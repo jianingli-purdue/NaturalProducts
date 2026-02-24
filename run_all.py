@@ -19,9 +19,9 @@ The script can be run from command line with arguments:
 # import importlib
 # import utils
 # importlib.reload(utils)
-# from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
+# from utils import load_data, run_all, convert_to_array
 
-from utils import load_data, run_all, convert_to_array, draw_pairs_of_molecules
+from utils import load_data, run_all, convert_to_array
 import pandas as pd
 import argparse
 
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         parser.add_argument('--encoding', type=str, default='ecfp', help='ML Encoding used for converting SMILES to vectors.')
         parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
         parser.add_argument('--lower_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules greater or equal than this value.')
-        parser.add_argument('--size_threshold', type=int, default=15, help='Minimum number of molecules for a current species.')
+        parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules for a current species.')
         parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules for a current species to be included in slow low-level computations.')
         parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to compute.')
         parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
@@ -51,14 +51,22 @@ if __name__ == '__main__':
         evo_distance_type = args.evo_distance_type
         evo_distances_file = args.evo_distances
         max_evo_distance = args.max_evo_distance
+        nmol_lower_cutoff = args.lower_limit_ref_size
+        nmol_upper_cutoff = args.upper_limit_ref_size
+        tdistance1 = args.tdistance1
+        tdistance2 = args.tdistance2
         
         # data_folder = './data'
         # dataset = 'coconut'
         # encoding = 'ecfp'
         # percentiles = [10, 25, 40, 50, 60, 75, 90]
-        # size_threshold = 15
+        # size_threshold = 20
         # min_size_threshold = 20
-        # evo_distance_type = "continuous"
+        # evo_distance_type = 'discrete'#"continuous"
+        # nmol_lower_cutoff =1000
+        # nmol_upper_cutoff =10000
+        # tdistance1 = 2
+        # tdistance2 = 3
         # evo_distances_file = "./data/all_species_distances_upper_triangle_evo_distance_upto200.csv"
         # max_evo_distance = 200.
         
@@ -76,7 +84,7 @@ if __name__ == '__main__':
                 encoding_columns = 'latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
         elif dataset == 'coconut':
                 filename_from_encoding = {
-                        'ecfp': 'Coconut_on_tree_51w_no_metal_and_salt.csv',
+                        'ecfp': 'coconut_on_tree_51w_no_metal_and_salt.csv',
                 }
                 taxonomic_levels = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'clean_species_name']
                 encoding_columns = None
@@ -104,8 +112,6 @@ if __name__ == '__main__':
         print(df[encoding_columns].head())
 
         df_taxonomic_chain_ref = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
-        nmol_lower_cutoff = args.lower_limit_ref_size
-        nmol_upper_cutoff = args.upper_limit_ref_size
         taxonomic_chains_ref = df_taxonomic_chain_ref[
                 (df_taxonomic_chain_ref['nmol'] < nmol_upper_cutoff) & 
                 (df_taxonomic_chain_ref['nmol'] >= nmol_lower_cutoff)
@@ -115,8 +121,8 @@ if __name__ == '__main__':
                 td_params = {
                         'evo_distance_type': 'discrete',
                         'max_taxonomic_distance': 3,   # 2 for debugging, 3 for production runs
-                        'tdistance1': args.tdistance1,
-                        'tdistance2': args.tdistance2,
+                        'tdistance1': tdistance1,
+                        'tdistance2': tdistance2,
                         }
         elif evo_distance_type == 'continuous':                
                 df_evo_distances = pd.read_csv(evo_distances_file, usecols=["distance", "tax_lineage_name_1", "tax_lineage_name_2"])

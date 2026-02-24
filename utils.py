@@ -511,10 +511,10 @@ def run_all(
 
         for percentile in percentiles:
             sample1 = df_above_threshold[
-                df_above_threshold['taxonomic_distance'] == td_params['tdistance1']
+                df_above_threshold['evo_distance'] == td_params['tdistance1']
                 ][f"distance_percentile_{percentile}"]
             sample2 = df_above_threshold[
-                df_above_threshold['taxonomic_distance'] == td_params['tdistance2']
+                df_above_threshold['evo_distance'] == td_params['tdistance2']
                 ][f"distance_percentile_{percentile}"]
             
             # Check if we have enough data for meaningful t-test
