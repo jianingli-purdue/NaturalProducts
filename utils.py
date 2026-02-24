@@ -736,7 +736,7 @@ def plot_tsne_results(df, reference_species, dotsize='small', center_of_circles=
     plt.close()
 
 def filter_and_save_by_evo_distances(
-    max_evo_distance=1000,
+    max_evo_distance=200,
     evo_distances_file="./data/all_species_distances_upper_triangle.csv", 
     save_filtered_file=True,
     ):

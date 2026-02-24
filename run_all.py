@@ -38,8 +38,8 @@ if __name__ == '__main__':
         parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
         parser.add_argument('--tdistance1', type=int, default=1, help='One of the taxonomic distances for statistical comparisons.')
         parser.add_argument('--tdistance2', type=int, default=3, help='The other taxonomic distance for statistical comparisons.')
-        parser.add_argument("--evo_distances", default="./data/all_species_distances_upper_triangle_evo_distance_upto100.csv", help="Path to the csv file with evolutionary distances between species")
-        parser.add_argument("--max_evo_distance", type=float, default=100., help="Maximum evolutionary distance to consider for computing chemical distances.")
+        parser.add_argument("--evo_distances", default="./data/all_species_distances_upper_triangle_evo_distance_upto200.csv", help="Path to the csv file with evolutionary distances between species")
+        parser.add_argument("--max_evo_distance", type=float, default=200., help="Maximum evolutionary distance to consider for computing chemical distances.")
         args = parser.parse_args()
 
         data_folder = args.data_folder
@@ -59,8 +59,8 @@ if __name__ == '__main__':
         # size_threshold = 15
         # min_size_threshold = 20
         # evo_distance_type = "continuous"
-        # evo_distances_file = "./data/all_species_distances_upper_triangle_evo_distance_upto100.csv"
-        # max_evo_distance = 100.
+        # evo_distances_file = "./data/all_species_distances_upper_triangle_evo_distance_upto200.csv"
+        # max_evo_distance = 200.
         
         colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
         
