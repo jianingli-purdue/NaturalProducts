@@ -30,6 +30,7 @@ if __name__ == '__main__':
         parser.add_argument('--data_folder', type=str, default='./data', help='Path to the data folder.')
         parser.add_argument('--dataset', type=str, default='coconut', help='Name of the dataset to use.')
         parser.add_argument('--encoding', type=str, default='ecfp', help='ML Encoding used for converting SMILES to vectors.')
+        parser.add_argument('--skip_ecfp_calculation', action='store_true', help='Whether to skip ECFP calculation.')
         parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
         parser.add_argument('--lower_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules greater or equal than this value.')
         parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules for a current species.')
@@ -45,6 +46,7 @@ if __name__ == '__main__':
         data_folder = args.data_folder
         dataset = args.dataset
         encoding = args.encoding
+        skip_ecfp_calculation = args.skip_ecfp_calculation
         percentiles = list(map(int, args.percentiles.split(',')))
         size_threshold = args.size_threshold
         min_size_threshold = args.min_size_threshold
@@ -96,12 +98,14 @@ if __name__ == '__main__':
         else:
                 raise ValueError(f"Unknown encoding {encoding}")
         
+        compute_ECFP_fingerprints = False if encoding == 'ecfp' and skip_ecfp_calculation else True
+         
         df = load_data(
                 file_path=data_file, 
                 colname_w_smiles=colname_w_smiles,
                 colname_w_features=(encoding_columns if encoding != 'ecfp' else None), 
                 top_rows=None, 
-                compute_ECFP_fingerprints=(encoding=='ecfp'),
+                compute_ECFP_fingerprints=compute_ECFP_fingerprints,
                 taxonomic_levels = taxonomic_levels
                 )
         
