@@ -151,6 +151,7 @@ if __name__ == '__main__':
                                 size_threshold=size_threshold,
                                 min_size_threshold=min_size_threshold,
                                 distance_metric=('Euclidean' if encoding != 'ecfp' else 'Tanimoto'),
+                                skip_canonicalization=(encoding == 'ecfp' and skip_ecfp_calculation),
                                 percentiles=percentiles,                                
                                 verbose=True,
                                 calc_stats_chemical_distances_vs_taxonomic_distances=False,

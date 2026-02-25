@@ -425,6 +425,7 @@ def run_all(
         percentiles=[25, 50],
         encoding='ECFP6_2048',
         encoding_columns='ECFP6_2048',
+        skip_canonicalization=False,
         distance_metric='Tanimoto',
         verbose=True,
         calc_stats_chemical_distances_vs_taxonomic_distances=False,
@@ -489,7 +490,7 @@ def run_all(
             
     # select only those rows where size >= size_threshold
     file_with_n_molecules_per_taxonomic_chain = f'{save_dataframes_to_folder}/n_molecules_per_taxonomic_chain.json'
-    smiles_colname='canonicalized_smiles' if RDKIT_AVAILABLE else 'canonical_smiles'
+    smiles_colname='canonicalized_smiles' if RDKIT_AVAILABLE or skip_canonicalization else 'canonical_smiles'
     nsmiles_per_taxonomic_chain = {}
     if os.path.exists(file_with_n_molecules_per_taxonomic_chain):
         with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
