@@ -61,6 +61,7 @@ def load_data(
         colname_w_features=None,   # if features (aka embeddings) are already available in the input file, specify the column name here
         top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows
         compute_ECFP_fingerprints=False,
+        skip_canonicalization=False,
         taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species'], # the default is for Lotus
 ):
     """
@@ -72,7 +73,7 @@ def load_data(
         colname_w_features (str, optional): Column name containing pre-computed molecular features
         top_rows (int, optional): Number of rows to load (None for all)
         compute_ECFP_fingerprints (bool): Whether to compute Morgan fingerprints
-        
+        skip_canonicalization (bool): Whether to skip SMILES canonicalization
     Returns:
         pandas.DataFrame: Processed dataframe containing molecular data and taxonomic information
     """
@@ -88,6 +89,8 @@ def load_data(
     
     if not RDKIT_AVAILABLE:
         print("RDKit is not available, skipping SMILES canonicalization and Morgan fingerprints computation.")
+    elif skip_canonicalization:
+        print("Skipping SMILES canonicalization as per the argument, using original SMILES from the input file.")
     else:
         smiles_colname = 'canonicalized_smiles'
         df[smiles_colname] = df[colname_w_smiles].apply(lambda s: safely_canonicalize_smiles(s))

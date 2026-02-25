@@ -106,6 +106,7 @@ if __name__ == '__main__':
                 colname_w_features=(encoding_columns if encoding != 'ecfp' else None), 
                 top_rows=None, 
                 compute_ECFP_fingerprints=compute_ECFP_fingerprints,
+                skip_canonicalization=(encoding == 'ecfp' and skip_ecfp_calculation),
                 taxonomic_levels = taxonomic_levels
                 )
         
@@ -113,7 +114,8 @@ if __name__ == '__main__':
                 encoding_columns = "ECFP6_2048"
         else:
                 df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
-        print(df[encoding_columns].head())
+        if not skip_ecfp_calculation:
+                print(df[encoding_columns].head())
 
         df_taxonomic_chain_ref = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
         taxonomic_chains_ref = df_taxonomic_chain_ref[
