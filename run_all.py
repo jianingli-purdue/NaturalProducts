@@ -31,6 +31,7 @@ if __name__ == '__main__':
         parser.add_argument('--dataset', type=str, default='coconut', help='Name of the dataset to use.')
         parser.add_argument('--encoding', type=str, default='ecfp', help='ML Encoding used for converting SMILES to vectors.')
         parser.add_argument('--skip_ecfp_calculation', action='store_true', help='Whether to skip ECFP calculation.')
+        parser.add_argument('--skip_canonicalization', default=None, action='store_true', help='Whether to skip SMILES canonicalization.')
         parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
         parser.add_argument('--lower_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules greater or equal than this value.')
         parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules for a current species.')
@@ -57,63 +58,70 @@ if __name__ == '__main__':
         nmol_upper_cutoff = args.upper_limit_ref_size
         tdistance1 = args.tdistance1
         tdistance2 = args.tdistance2
+        skip_canonicalization = args.skip_canonicalization
         
         # data_folder = './data'
         # dataset = 'coconut'
-        # encoding = 'ecfp'
+        # encoding = 'chemformer'
         # percentiles = [10, 25, 40, 50, 60, 75, 90]
         # size_threshold = 20
         # min_size_threshold = 20
-        # evo_distance_type = 'discrete'#"continuous"
+        # evo_distance_type = "continuous" # 'discrete'#
         # nmol_lower_cutoff =1000
         # nmol_upper_cutoff =10000
         # tdistance1 = 2
         # tdistance2 = 3
         # evo_distances_file = "./data/all_species_distances_upper_triangle_evo_distance_upto200.csv"
         # max_evo_distance = 200.
+        # skip_ecfp_calculation = True
+        # skip_canonicalization = True
         
         colname_w_smiles='canonical_smiles'  # name of the column in the input file, may be not canonicalized smiles
         
         if dataset == 'lotus':
-                filename_from_encoding = {
-                        'chemformer': 'Lotus_fulldata_latent_matrix_Chemformer.csv',
-                        'smitrans': 'Lotus_fulldata_latent_matrix_SMILES-TRANSFORMER.csv',
-                        'SELformer': 'Lotus_fulldata_SELformer.csv',
-                        'nyan': 'Lotus_fulldata_latent_matrix_nyan.csv',
-                        'molvae': 'Lotus.csv',
+                filenames_from_encoding = {
+                        'chemformer': ['Lotus_fulldata_latent_matrix_Chemformer.csv'],
+                        'smitrans': ['Lotus_fulldata_latent_matrix_SMILES-TRANSFORMER.csv'],
+                        'SELformer': ['Lotus_fulldata_SELformer.csv'],
+                        'nyan': ['Lotus_fulldata_latent_matrix_nyan.csv'],
+                        'molvae': ['Lotus.csv'],
                 }
                 taxonomic_levels = ['superkingdom', 'kingdom', 'phylum', 'classx', 'family', 'genus', 'species']    
                 encoding_columns = 'latent_vector'   # if features (aka embeddings) are already available in the input file, specify the column name here
         elif dataset == 'coconut':
-                filename_from_encoding = {
-                        'ecfp': 'coconut_on_tree_51w_no_metal_and_salt.csv',
+                filenames_from_encoding = {
+                        'ecfp': ['coconut_on_tree_51w_no_metal_and_salt.csv'],
+                        'chemformer': ['coconut_on_tree_51w_no_metal_and_salt.csv', 'Coconut_NP_chemformer/smiles_to_embedding.pkl'],
                 }
                 taxonomic_levels = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'clean_species_name']
-                encoding_columns = None
+                encoding_columns = 'latent_vector'
         else:
                 raise ValueError(f"Unknown dataset {dataset}")
 
-        if encoding in filename_from_encoding:
-                data_file = f'{data_folder}/{filename_from_encoding[encoding]}'
+        if encoding in filenames_from_encoding:
+                data_files = [f'{data_folder}/{filename}' for filename in filenames_from_encoding[encoding]]
         else:
                 raise ValueError(f"Unknown encoding {encoding}")
         
-        compute_ECFP_fingerprints = False if encoding == 'ecfp' and skip_ecfp_calculation else True
+        compute_ECFP_fingerprints = False if encoding == 'ecfp' and skip_ecfp_calculation else not skip_ecfp_calculation
+        if skip_canonicalization is None:
+                skip_canonicalization = (encoding == 'ecfp' and skip_ecfp_calculation)
          
         df = load_data(
-                file_path=data_file, 
+                file_paths=data_files, 
                 colname_w_smiles=colname_w_smiles,
                 colname_w_features=(encoding_columns if encoding != 'ecfp' else None), 
                 top_rows=None, 
                 compute_ECFP_fingerprints=compute_ECFP_fingerprints,
-                skip_canonicalization=(encoding == 'ecfp' and skip_ecfp_calculation),
+                skip_canonicalization=skip_canonicalization,
                 taxonomic_levels = taxonomic_levels
                 )
         
         if encoding == 'ecfp':
                 encoding_columns = "ECFP6_2048"
         else:
-                df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
+                if len(data_files) == 1:
+                        df[encoding_columns] = df[encoding_columns].apply(convert_to_array)
         if not skip_ecfp_calculation:
                 print(df[encoding_columns].head())
 
@@ -138,6 +146,7 @@ if __name__ == '__main__':
                         'evo_distance_type': 'continuous',
                         'max_evo_distance': max_evo_distance,
                         'df_evo_distances': df_evo_distances,
+                        'taxonomic_levels': taxonomic_levels,
                         }
                 
         for taxonomic_chain_ref in taxonomic_chains_ref:

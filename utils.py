@@ -56,7 +56,7 @@ def safely_canonicalize_smiles(smi):
         return smi
 
 def load_data(
-        file_path='./Lotus.csv',
+        file_paths=['./Lotus.csv'],
         colname_w_smiles='smiles', # name of the column in the input file, may be not canonicalized smiles
         colname_w_features=None,   # if features (aka embeddings) are already available in the input file, specify the column name here
         top_rows=None,             # if None, the whole csv file will be loaded, otherwise the given number of top rows
@@ -68,7 +68,7 @@ def load_data(
     Load and preprocess molecular data from a CSV file.
     
     Args:
-        file_path (str): Path to the input CSV file
+        file_paths (list): List of paths to the input  files
         colname_w_smiles (str): Column name containing SMILES strings
         colname_w_features (str, optional): Column name containing pre-computed molecular features
         top_rows (int, optional): Number of rows to load (None for all)
@@ -77,12 +77,22 @@ def load_data(
     Returns:
         pandas.DataFrame: Processed dataframe containing molecular data and taxonomic information
     """
-    cols_to_load = [colname_w_smiles] + taxonomic_levels
-    if colname_w_features:
-        cols_to_load += [colname_w_features]
-
-    df = pd.read_csv(file_path, usecols=cols_to_load, nrows=top_rows)
-    df = df.dropna(subset=taxonomic_levels[6]).copy()
+    if len(file_paths) == 2 and file_paths[1].endswith('.pkl'):
+        df = pd.read_csv(file_paths[0], usecols=[colname_w_smiles] + taxonomic_levels, nrows=top_rows)
+        import pickle
+        smiles_to_emb = pickle.load(open(file_paths[1], "rb"))
+        print(f"Original dataset size: {len(df)}")
+        df[colname_w_features] = df[colname_w_smiles].apply(lambda smi: smiles_to_emb[smi] if smi in smiles_to_emb else None)
+        print(f"After merging with the features from the .pkl file, the dataset size is {len(df)}")
+    elif len(file_paths) == 1 and file_paths[0].endswith('.csv'):
+        cols_to_load = [colname_w_smiles] + taxonomic_levels
+        if colname_w_features:
+            cols_to_load += [colname_w_features]
+        df = pd.read_csv(file_paths[0], usecols=cols_to_load, nrows=top_rows)
+    else:
+        raise ValueError(f"Error: received {file_paths}, while only one .csv file or one .csv file + one .pkl file is expected")
+    
+    df = df.dropna(subset=taxonomic_levels[-1]).copy()
     df['taxonomic_chain'] = df[taxonomic_levels].astype(str).agg('-'.join, axis=1)
     unique_taxonomies = df['taxonomic_chain'].unique()
     print(f"The size of the dataset {len(df)}, {len(unique_taxonomies)} unique species found")
@@ -146,9 +156,16 @@ def chemical_distance(df, taxonomic_chain, taxonomic_chain_ref,
                50th percentile distance, reference SMILES, current SMILES)
     """    
     
-    # autoselection of the name of the column with smiles, if not provided explicitly, depending on whether rdkit tools for canonicalization are available
-    if smiles_colname is None:
-        smiles_colname='canonicalized_smiles' if RDKIT_AVAILABLE else 'canonical_smiles'
+    if smiles_colname not in df.columns:
+        # print(f"Warning: df doesn't contain column {smiles_colname}, trying to find a suitable column for SMILES.")
+        if 'canonicalized_smiles' in df.columns:
+            smiles_colname = 'canonicalized_smiles'
+            # print(f"Found column {smiles_colname} with canonicalized SMILES strings, using it for distance calculations.")
+        elif 'canonical_smiles' in df.columns:
+            smiles_colname = 'canonical_smiles'
+            # print(f"Found column {smiles_colname} with canonical SMILES strings, using it for distance calculations.")
+        else:
+            smiles_colname = None
     
     # check whether there are enough different molecules in the current set
     set_current = set(df[df['taxonomic_chain'] == taxonomic_chain][smiles_colname])
