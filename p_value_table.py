@@ -5,7 +5,6 @@ import numpy as np
 from scipy.stats import gaussian_kde
 from scipy import stats
 import argparse
-from mpmath import mp
 import json
 
 
@@ -77,26 +76,42 @@ if __name__ == '__main__':
     # generate the table with pvalues for chemical distances concatenated together, regardless of ref species, for different taxonomic distances and selected keywords
     parser = argparse.ArgumentParser(description='Visualize p-value distributions.')
     parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
-    parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv will be generated.')
-    parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
+    parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv or combined_data_t_stat.csv  will be generated.')
+    parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
     parser.add_argument('--lower_limit_ref_size', type=int, default=150, help='Include reference species with number of molecules greater or equal than this value.')
     parser.add_argument('--encoding', type=str, default='chemformer', help='ML Encoding used for converting SMILES to vectors.')
-    parser.add_argument('--size_threshold', type=int, default=15, help='Minimum number of molecules in a current species to include it into analysis.')
-    parser.add_argument('--min_size_threshold', type=int, default=10, help='Minimum number of molecules in a species for which raw data were precomputed.')
+    parser.add_argument('--size_threshold', type=int, default=20, help='Minimum number of molecules in a current species to include it into analysis.')
+    parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules in a species for which raw data were precomputed.')
     parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to use.')
+    parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
     args = parser.parse_args()
 
     data_folder = args.data_folder
     data_filename = args.data_filename
+    upper_limit_ref_size = args.upper_limit_ref_size
+    lower_limit_ref_size = args.lower_limit_ref_size
     encoding = args.encoding
     size_threshold = args.size_threshold
     min_size_threshold = args.min_size_threshold
     percentiles = list(map(int, args.percentiles.split(',')))
+    evo_distance_type = args.evo_distance_type
+    
+    # data_folder = './data/'
+    # data_filename = ''
+    # upper_limit_ref_size = 10000
+    # lower_limit_ref_size = 1000
+    # encoding = 'chemformer'
+    # size_threshold = 20
+    # min_size_threshold = 20
+    # percentiles = [10,25,40,50,60,75,90]
+    # evo_distance_type = 'continuous'
+    
+    
     distance_column_names = [f'distance_percentile_{p}' for p in percentiles]
-    suffix = f"{encoding}_s{size_threshold}_refs{args.lower_limit_ref_size}-{args.upper_limit_ref_size}"
+    suffix = f"{encoding}_s{size_threshold}_refs{lower_limit_ref_size}-{upper_limit_ref_size}"
     
     df_stat_refspecies = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
-    included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < args.upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= args.lower_limit_ref_size)]['taxonomic_chain'].values
+    included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= lower_limit_ref_size)]['taxonomic_chain'].values
     
     file_with_n_molecules_per_taxonomic_chain = f'{data_folder}/n_molecules_per_taxonomic_chain.json'
     with open(file_with_n_molecules_per_taxonomic_chain, 'r') as f:
@@ -109,59 +124,94 @@ if __name__ == '__main__':
         for file_name in os.listdir(curr_folder_path):
             if file_name.startswith("chem_vs_tax_dist_") and file_name.endswith(".csv"):
                 file_path = os.path.join(curr_folder_path, file_name)
-                dfc = pd.read_csv(file_path, usecols=['taxonomic_chain_ref', 'taxonomic_chain', 'taxonomic_distance'] + [f'distance_percentile_{p}' for p in percentiles])
+                dfc = pd.read_csv(file_path, usecols=['evo_chain_ref', 'evo_chain', 'evo_distance'] + [f'distance_percentile_{p}' for p in percentiles])
                 dfc = dfc.replace([np.inf, -np.inf], np.nan).dropna(subset=[f'distance_percentile_{p}' for p in percentiles])
-                dfc = dfc[dfc['taxonomic_chain_ref'].isin(included_refspecies)]
-                dfc = dfc[dfc['taxonomic_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold].copy()
+                dfc = dfc[dfc['evo_chain_ref'].isin(included_refspecies)]
+                dfc = dfc[dfc['evo_chain'].apply(lambda x: nsmiles_per_taxonomic_chain[x]) >= size_threshold].copy()
                 if len(dfc) > 0:                
                     combined_df = pd.concat([combined_df, dfc]) if combined_df is not None else dfc
                 
-        with open(f'{data_folder}/unique_taxonomic_chain_refs_{suffix}.txt', 'w') as f:
-            for item in combined_df['taxonomic_chain_ref'].unique():
+        with open(f'{data_folder}/unique_evo_chain_refs_{suffix}.txt', 'w') as f:
+            for item in combined_df['evo_chain_ref'].unique():
                 f.write(f"{item}\n")
         
-        data_filename = f'combined_data_Welch_stat_{suffix}.csv'
+        if evo_distance_type == 'continuous':
+            data_filename = f'combined_data_t_stat_{suffix}.csv'
+        elif evo_distance_type == 'discrete':
+            data_filename = f'combined_data_Welch_stat_{suffix}.csv'
         combined_df.to_csv(f'{data_folder}/{data_filename}', index=False)
         
     combined_df = pd.read_csv(f'{data_folder}/{data_filename}')
     combined_df = combined_df.dropna(subset=distance_column_names)
-    combined_df = combined_df[combined_df['taxonomic_chain_ref'].isin(included_refspecies)].copy()
+    combined_df = combined_df[combined_df['evo_chain_ref'].isin(included_refspecies)].copy()
     
+    if evo_distance_type == 'discrete':
+        from mpmath import mp
+        df_Welch_stat_combined = None
+        for tdistance1, tdistance2 in [[1, 2], [2, 3], [1, 3],]:
+            for keyword in ['', 'Fungi', 'Viridiplantae', 'Magnoliopsida', 'Pinopsida',
+                            'Bacteria', 
+                            'Metazoa',
+                            ]:
+                dfc = combined_df[combined_df['evo_chain_ref'].str.contains(keyword)]
+                
+                data_Wstat = []
+                columns_Wstat = []
 
-    df_Welch_stat_combined = None
-    for tdistance1, tdistance2 in [[1, 2], [2, 3], [1, 3],]:
+                for percentile in percentiles:
+                    sample1 = dfc[
+                        dfc['taxonomic_distance'] == tdistance1
+                        ][f"distance_percentile_{percentile}"]
+                    sample2 = dfc[
+                        dfc['taxonomic_distance'] == tdistance2
+                        ][f"distance_percentile_{percentile}"]
+                    st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
+                    Wtstat, Wtpvalue, Wtdof = st.statistic, st.pvalue, st.df
+                    if not np.isnan(Wtdof) and Wtdof >= 2:
+                        t = mp.mpf(Wtstat)
+                        nu = mp.mpf(Wtdof)
+                        x2 = nu / (t**2 + nu)
+                        pvalue_high_acc = mp.betainc(nu/2, mp.one/2, x2=x2, regularized=True)/2
+                    else:
+                        print(f"No sufficient sampling for taxonomic_distances {tdistance1},{tdistance2} in {keyword}, Wtdof {Wtdof}")
+                        pvalue_high_acc = None
+                    # print(f"p-value: {Wtpvalue} vs {pvalue_high_acc}")
+                    data_Wstat += [Wtstat, pvalue_high_acc, Wtdof]
+                    columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
+
+                df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
+                df_Welch_stat['keyword'] = keyword
+                df_Welch_stat['tdistances'] = f'{tdistance1}vs{tdistance2}'
+                df_Welch_stat_combined = pd.concat([df_Welch_stat_combined, df_Welch_stat]) if df_Welch_stat_combined is not None else df_Welch_stat
+        df_Welch_stat_combined.to_csv(f'{data_folder}/combined_Welch_stat_{suffix}.csv', index=False)
+    elif evo_distance_type == 'continuous':
+        df_tstat_combined = None
         for keyword in ['', 'Fungi', 'Viridiplantae', 'Magnoliopsida', 'Pinopsida',
-                        'Bacteria', 
+                        'Pseudomonadati', 'Bacillati',
                         'Metazoa',
                         ]:
-            dfc = combined_df[combined_df['taxonomic_chain_ref'].str.contains(keyword)]
+            dfc = combined_df[combined_df['evo_chain_ref'].str.contains(keyword)]
             
-            data_Wstat = []
-            columns_Wstat = []
+            data_tstat = []
+            columns_tstat = []
 
             for percentile in percentiles:
-                sample1 = dfc[
-                    dfc['taxonomic_distance'] == tdistance1
-                    ][f"distance_percentile_{percentile}"]
-                sample2 = dfc[
-                    dfc['taxonomic_distance'] == tdistance2
-                    ][f"distance_percentile_{percentile}"]
-                st = stats.ttest_ind(sample2, sample1, equal_var=False, alternative='greater')
-                Wtstat, Wtpvalue, Wtdof = st.statistic, st.pvalue, st.df
-                if not np.isnan(Wtdof) and Wtdof >= 2:
-                    t = mp.mpf(Wtstat)
-                    nu = mp.mpf(Wtdof)
-                    x2 = nu / (t**2 + nu)
-                    pvalue_high_acc = mp.betainc(nu/2, mp.one/2, x2=x2, regularized=True)/2
+                if len(dfc) > 2:
+                    r = np.corrcoef(
+                        dfc['evo_distance'],
+                        dfc[f"distance_percentile_{percentile}"]
+                        )[0, 1]
+                    dof = len(dfc) - 2
+                    t_stat = r * np.sqrt((dof) / (1 - r**2)) 
+                    p_value = stats.t.sf(t_stat, df=dof) # testing that the correlation is positive, one-sided test
                 else:
-                    print(f"No sufficient sampling for taxonomic_distances {tdistance1},{tdistance2} in {keyword}, Wtdof {Wtdof}")
-                    pvalue_high_acc = None
-                # print(f"p-value: {Wtpvalue} vs {pvalue_high_acc}")
-                data_Wstat += [Wtstat, pvalue_high_acc, Wtdof]
-                columns_Wstat += [f'Wtstat_{percentile}', f'Wt_pvalue_{percentile}', f'Wtdof_{percentile}']
-
-            df_Welch_stat = pd.DataFrame([data_Wstat], columns=columns_Wstat)
-            df_Welch_stat['keyword'] = keyword
-            df_Welch_stat['tdistances'] = f'{tdistance1}vs{tdistance2}'
-            df_Welch_stat_combined = pd.concat([df_Welch_stat_combined, df_Welch_stat]) if df_Welch_stat_combined is not None else df_Welch_stat
-    df_Welch_stat_combined.to_csv(f'{data_folder}/combined_Welch_stat_{suffix}.csv', index=False)
+                    print(f"No sufficient sampling for {keyword}, n datapoints {len(dfc)}")
+                    t_stat, p_value, dof = None, None, None
+                data_tstat += [t_stat, p_value, dof]
+                columns_tstat += [f'tstat_{percentile}', f't_pvalue_{percentile}', f't_dof_{percentile}']
+            
+            df_tstat = pd.DataFrame([data_tstat], columns=columns_tstat)
+            df_tstat['keyword'] = keyword
+            df_tstat_combined = pd.concat([df_tstat_combined, df_tstat]) if df_tstat_combined is not None else df_tstat
+        df_tstat_combined.to_csv(f'{data_folder}/combined_t_stat_{suffix}.csv', index=False)
+                
