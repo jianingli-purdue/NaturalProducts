@@ -105,31 +105,51 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Visualize p-value distributions.')
     parser.add_argument('--data_folder', type=str, default='./data/', help='Path to the data folder.')
     parser.add_argument('--data_filename', type=str, default='', help='Name of the data file. If empty, combined_data_Welch_stat.csv will be generated.')
-    parser.add_argument('--upper_limit_ref_size', type=int, default=1000, help='Include reference species with number of molecules less than this value.')
+    parser.add_argument('--upper_limit_ref_size', type=int, default=10000, help='Include reference species with number of molecules less than this value.')
     parser.add_argument('--lower_limit_ref_size', type=int, default=150, help='Include reference species with number of molecules greater or equal than this value.')
     parser.add_argument('--encoding', type=str, default='chemformer', help='The best ML Encoding used for converting SMILES to vectors, center visualization on it.')
     parser.add_argument('--tdistance1', type=int, default=1, help='Taxonomic distance 1 for statistical comparisons.')
     parser.add_argument('--tdistance2', type=int, default=3, help='Taxonomic distance 2 for statistical comparisons.')
-    parser.add_argument('--size_threshold', type=int, default=15, help='The best minimum number of molecules in a current species, center visualization on it.')
+    parser.add_argument('--size_threshold', type=int, default=20, help='The best minimum number of molecules in a current species, center visualization on it.')
     parser.add_argument('--percentile', type=int, default=50, help='The best percentile in the definition of chem distance, center visualization on it.')
-    parser.add_argument('--min_size_threshold', type=int, default=10, help='Minimum number of molecules in a species for which raw data were precomputed.')
+    parser.add_argument('--min_size_threshold', type=int, default=20, help='Minimum number of molecules in a species for which raw data were precomputed.')
     parser.add_argument('--percentiles', type=str, default='10,25,40,50,60,75,90', help='Percentiles to use.')
+    parser.add_argument('--encodings', type=str, default='chemformer', help='Comma-separated list of encodings to include in the analysis.')
+    parser.add_argument('--sizes', type=str, default='20,25,30', help='Comma-separated list of size thresholds to include in the analysis.')
+    parser.add_argument('--evo_distance_type', type=str, default='continuous', help='Type of evolutionary distance: discrete for taxonomic distance, continuous for time-calibrated evolutionary distance.')
+    
     args = parser.parse_args()
 
     data_folder = args.data_folder
     data_filename = args.data_filename
-    tdistance1 = args.tdistance1
-    tdistance2 = args.tdistance2
     encoding_center = args.encoding
     size_threshold_center = args.size_threshold
     min_size_threshold = args.min_size_threshold
     percentiles = list(map(int, args.percentiles.split(',')))
     percentile_center = args.percentile
-    Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
+    evo_distance_type = args.evo_distance_type
+    if evo_distance_type == 'discrete':
+        tdistance1 = args.tdistance1
+        tdistance2 = args.tdistance2
+        Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
+    elif evo_distance_type == 'continuous':
+        t_column_names = [f't_pvalue_{p}' for p in percentiles]
+       
+    data_folder = './data/'
+    data_filename = ''
+    upper_limit_ref_size = 10000
+    lower_limit_ref_size = 1000
+    encoding_center = 'chemformer'
+    size_threshold_center = 20
+    min_size_threshold = 20
+    percentiles = [10,25,40,50,60,75,90]
+    percentile_center = 50
+    evo_distance_type = 'continuous'
+    t_column_names = [f't_pvalue_{p}' for p in percentiles]
        
     if data_filename == '':
-        encodings = ['chemformer', 'smitrans', 'SELformer', 'molvae', 'nyan', ]
-        sizes = [10, 15, 20, 25, 30]
+        encodings = args.encodings.split(',')  #['chemformer', 'smitrans', 'SELformer', 'molvae', 'nyan', ]
+        sizes = list(map(int, args.sizes.split(',')))  #[10, 15, 20, 25, 30]
         combined_df = None
         for e in encodings:
             for s in sizes:
