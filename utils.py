@@ -609,7 +609,7 @@ def run_all(
 
         df_tstat = pd.DataFrame([data_tstat], columns=columns_tstat)
         if save_dataframes_to_folder:
-            curr_folder = f'{save_dataframes_to_folder}/tstat_chem_vs_tax_dist_csv_files_td_{encoding}_s{size_threshold}'
+            curr_folder = f'{save_dataframes_to_folder}/tstat_chem_vs_tax_dist_csv_files_{encoding}_s{size_threshold}'
             os.makedirs(curr_folder, exist_ok=True)
             df_tstat.to_csv(f'{curr_folder}/tstat_chem_vs_tax_dist_{taxonomic_chain_ref}.csv', index=False)
 

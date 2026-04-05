@@ -32,7 +32,7 @@ def plot_kde(ax, data, color, label, p_value_legend, range_min=MIN_ACCEPTED_LOG_
     percentage_below_threshold = (data < np.log10(p_value_legend)).mean() * 100
     return f'{label} ({percentage_below_threshold:.1f}% p-value < {p_value_legend})'
 
-def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_value_legend=0.01, save_png=None):
+def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_value_legend=0.01, save_png=None, evo_distance_type='continuous'):
     """
     Create visualization of p-value distributions for different parameters.
     
@@ -42,8 +42,10 @@ def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_val
         filter_criteria (dict): Criteria for filtering the data
         p_value_legend (float): P-value threshold for annotations
         save_png (str, optional): Path to save the generated plot
+        evo_distance_type (str): Type of evolutionary distance ('continuous' or 'discrete')
     """
     keyword = filter_criteria['taxonomic_chain_ref']
+    nonempty_plot = False
    
     fig, ax = plt.subplots(figsize=(10, 5))
     plt.rc('font', family='DejaVu Sans', size=14, weight='bold')
@@ -51,6 +53,10 @@ def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_val
     values_of_variable = percentiles if variable == 'percentile' else df[variable].unique()
     colors = plt.get_cmap('jet', len(values_of_variable))
     legend_labels = []
+    if evo_distance_type == 'discrete':
+        pvalue_type = 'Wt'
+    elif evo_distance_type == 'continuous':
+        pvalue_type = 't'
     
     for i, val in enumerate(values_of_variable):
         if variable == 'percentile':
@@ -59,11 +65,12 @@ def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_val
             subset = df[(df['size'] == filter_criteria['size']) & (df['embedding'] == val)]
         else:
             subset = df[(df['size'] == val) & (df['embedding'] == filter_criteria['embedding'])]
-        data = subset[f'log_Wt_pvalue_{filter_criteria["percentile"]}'] if variable != 'percentile' else subset[f'log_Wt_pvalue_{val}']
+        data = subset[f'log_{pvalue_type}_pvalue_{filter_criteria["percentile"]}'] if variable != 'percentile' else subset[f'log_{pvalue_type}_pvalue_{val}']
         data = [np.maximum(x, MIN_ACCEPTED_LOG_VALUE) for x in data]
         label = f'Percentile {val}' if variable == 'percentile' else val if variable == 'embedding' else f'Size {val}'
         if len(data) > 1:
             legend_labels.append(plot_kde(ax, data, colors(i), label, p_value_legend))
+            nonempty_plot = True
     
     title = f'{keyword}, Different {variable.capitalize()}s' if keyword else f'All Taxonomic Chains, Different {variable.capitalize()}s'
     plt.title(title, fontsize=16, weight='bold')
@@ -72,7 +79,8 @@ def visualize_p_value(df, variable, filter_criteria, percentiles=[25, 50], p_val
     plt.ylabel('Frequency', fontsize=14, weight='bold')
     plt.legend(title=variable.capitalize(), labels=legend_labels)
     ax.grid(False)
-    plt.savefig(save_png) if save_png else plt.show()
+    if nonempty_plot:
+        plt.savefig(save_png) if save_png else plt.show()
 
 
 if __name__ == '__main__':
@@ -122,62 +130,82 @@ if __name__ == '__main__':
 
     data_folder = args.data_folder
     data_filename = args.data_filename
+    upper_limit_ref_size = args.upper_limit_ref_size
+    lower_limit_ref_size = args.lower_limit_ref_size
     encoding_center = args.encoding
     size_threshold_center = args.size_threshold
     min_size_threshold = args.min_size_threshold
+    encodings = args.encodings.split(',') #['chemformer', 'smitrans', 'SELformer', 'molvae', 'nyan', ]
+    sizes = list(map(int, args.sizes.split(',')))  #[10, 15, 20, 25, 30]
     percentiles = list(map(int, args.percentiles.split(',')))
     percentile_center = args.percentile
     evo_distance_type = args.evo_distance_type
     if evo_distance_type == 'discrete':
         tdistance1 = args.tdistance1
         tdistance2 = args.tdistance2
-        Wt_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
+        pvalues_column_names = [f'Wt_pvalue_{p}' for p in percentiles]
     elif evo_distance_type == 'continuous':
-        t_column_names = [f't_pvalue_{p}' for p in percentiles]
+        pvalues_column_names = [f't_pvalue_{p}' for p in percentiles]
        
-    data_folder = './data/'
-    data_filename = ''
-    upper_limit_ref_size = 10000
-    lower_limit_ref_size = 1000
-    encoding_center = 'chemformer'
-    size_threshold_center = 20
-    min_size_threshold = 20
-    percentiles = [10,25,40,50,60,75,90]
-    percentile_center = 50
-    evo_distance_type = 'continuous'
-    t_column_names = [f't_pvalue_{p}' for p in percentiles]
+    # data_folder = './data/'
+    # data_filename = ''
+    # upper_limit_ref_size = 10000
+    # lower_limit_ref_size = 1000
+    # encoding_center = 'chemformer'
+    # size_threshold_center = 20
+    # min_size_threshold = 20
+    # encodings = ['chemformer',]
+    # sizes = [20,]
+    # percentiles = [10,25,40,50,60,75,90]
+    # percentile_center = 50
+    # evo_distance_type = 'continuous'
+    # pvalues_column_names = [f't_pvalue_{p}' for p in percentiles]
        
     if data_filename == '':
-        encodings = args.encodings.split(',')  #['chemformer', 'smitrans', 'SELformer', 'molvae', 'nyan', ]
-        sizes = list(map(int, args.sizes.split(',')))  #[10, 15, 20, 25, 30]
         combined_df = None
+        if evo_distance_type == 'discrete':
+            prefix = f'Welch_stat_chem_vs_tax_dist'
+        elif evo_distance_type == 'continuous':
+            prefix = f'tstat_chem_vs_tax_dist'
         for e in encodings:
             for s in sizes:
-                curr_folder_path = f'{data_folder}/Welch_stat_chem_vs_tax_dist_csv_files_td{tdistance1}{tdistance2}_{e}_s{s}'
-                for file_name in os.listdir(curr_folder_path):
-                    if file_name.startswith("Welch_stat_chem_vs_tax_dist_") and file_name.endswith(".csv"):
-                        file_path = os.path.join(curr_folder_path, file_name)
-                        dfc = pd.read_csv(file_path).dropna(subset=Wt_column_names)
-                        dfc['embedding'] = e
-                        dfc['size'] = s
-                        dfc['tdistance1'] = tdistance1
-                        dfc['tdistance2'] = tdistance2
-                        if len(dfc) > 0:
-                            combined_df = pd.concat([combined_df, dfc]) if combined_df is not None else dfc
+                if evo_distance_type == 'discrete':
+                    curr_folder_path = f'{data_folder}/{prefix}_csv_files_td{tdistance1}{tdistance2}_{e}_s{s}'
+                elif evo_distance_type == 'continuous':
+                    curr_folder_path = f'{data_folder}/{prefix}_csv_files_{e}_s{s}'
+                try:
+                    for file_name in os.listdir(curr_folder_path):
+                        if file_name.startswith(prefix) and file_name.endswith(".csv"):
+                            file_path = os.path.join(curr_folder_path, file_name)
+                            dfc = pd.read_csv(file_path).dropna(subset=pvalues_column_names)
+                            dfc['embedding'] = e
+                            dfc['size'] = s
+                            if evo_distance_type == 'discrete':
+                                dfc['tdistance1'] = tdistance1
+                                dfc['tdistance2'] = tdistance2
+                            if len(dfc) > 0:
+                                combined_df = pd.concat([combined_df, dfc]) if combined_df is not None else dfc
+                except FileNotFoundError:
+                    print(f'Folder {curr_folder_path} not found. Skipping.')
         
-        data_filename = 'combined_data_Welch_stat.csv'                    
+        data_filename = 'combined_data_Welch_stat.csv' if evo_distance_type == 'discrete' else 'combined_data_tstat.csv'
         combined_df.to_csv(f'{data_folder}/{data_filename}', index=False)
 
     combined_df = pd.read_csv(f'{data_folder}/{data_filename}')
-    combined_df = combined_df.dropna(subset=Wt_column_names)
-    combined_df = combined_df[(combined_df['tdistance1'] == tdistance1) & (combined_df['tdistance2'] == tdistance2)]
+    combined_df = combined_df.dropna(subset=pvalues_column_names)
+    if evo_distance_type == 'discrete':
+        combined_df = combined_df[(combined_df['tdistance1'] == tdistance1) & (combined_df['tdistance2'] == tdistance2)]
     
     df_stat_refspecies = pd.read_csv('./statistics_on_n_molecules_per_taxonomic_chain.csv')
-    included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < args.upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= args.lower_limit_ref_size)]['taxonomic_chain'].values
+    included_refspecies = df_stat_refspecies[(df_stat_refspecies['nmol'] < upper_limit_ref_size) & (df_stat_refspecies['nmol'] >= lower_limit_ref_size)]['taxonomic_chain'].values
     combined_df = combined_df[combined_df['taxonomic_chain_ref'].isin(included_refspecies)].copy()
-    for p in percentiles:
-        combined_df[f'log_Wt_pvalue_{p}'] = np.log10(combined_df[f'Wt_pvalue_{p}'])
-        
+    if evo_distance_type == 'discrete':
+        for p in percentiles:
+            combined_df[f'log_Wt_pvalue_{p}'] = np.log10(combined_df[f'Wt_pvalue_{p}'])
+    elif evo_distance_type == 'continuous':
+        for p in percentiles:
+            combined_df[f'log_t_pvalue_{p}'] = np.log10(combined_df[f't_pvalue_{p}'])
+            
     # build plots for distributions of pvalue of individual reference species as a function of various settings
     for keyword in [
         'Magnoliopsida',
@@ -199,4 +227,4 @@ if __name__ == '__main__':
             os.makedirs(curr_folder_path, exist_ok=True)
             save_png = f'{curr_folder_path}/various_{variable}s_fixed_{fixed_parameters}.png'
             dfc = combined_df[combined_df['taxonomic_chain_ref'].str.contains(keyword)].copy() if keyword else combined_df.copy()
-            visualize_p_value(dfc, variable, filter_criteria, percentiles=percentiles, save_png=save_png)
+            visualize_p_value(dfc, variable, filter_criteria, percentiles=percentiles, save_png=save_png, evo_distance_type=evo_distance_type)
